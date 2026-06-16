@@ -1,0 +1,54 @@
+import axios from 'axios';
+import { Character, Event, Mission, LoginResponse, Worldview } from '../types';
+
+const api = axios.create({
+  baseURL: '/api',
+});
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+export const authAPI = {
+  login: (username: string, password: string) =>
+    api.post<LoginResponse>('/auth/login', { username, password }).then((res) => res.data),
+  register: (username: string, password: string) =>
+    api.post('/auth/register', { username, password }).then((res) => res.data),
+  getProfile: () => api.get('/auth/profile').then((res) => res.data),
+};
+
+export const characterAPI = {
+  getAll: () => api.get<Character[]>('/characters').then((res) => res.data),
+  getById: (id: number) => api.get<Character>(`/characters/${id}`).then((res) => res.data),
+  create: (data: Omit<Character, 'id' | 'createdAt' | 'updatedAt'>) =>
+    api.post<Character>('/characters', data).then((res) => res.data),
+  update: (id: number, data: Omit<Character, 'id' | 'createdAt' | 'updatedAt'>) =>
+    api.put<Character>(`/characters/${id}`, data).then((res) => res.data),
+  delete: (id: number) => api.delete(`/characters/${id}`).then((res) => res.data),
+};
+
+export const eventAPI = {
+  getAll: () => api.get<Event[]>('/events').then((res) => res.data),
+  getById: (id: number) => api.get<Event>(`/events/${id}`).then((res) => res.data),
+  create: (data: any) => api.post<Event>('/events', data).then((res) => res.data),
+  update: (id: number, data: any) => api.put<Event>(`/events/${id}`, data).then((res) => res.data),
+  delete: (id: number) => api.delete(`/events/${id}`).then((res) => res.data),
+};
+
+export const missionAPI = {
+  getAll: () => api.get<Mission[]>('/missions').then((res) => res.data),
+  getById: (id: number) => api.get<Mission>(`/missions/${id}`).then((res) => res.data),
+  create: (data: any) => api.post<Mission>('/missions', data).then((res) => res.data),
+  update: (id: number, data: any) => api.put<Mission>(`/missions/${id}`, data).then((res) => res.data),
+  delete: (id: number) => api.delete(`/missions/${id}`).then((res) => res.data),
+};
+
+export const worldviewAPI = {
+  get: () => api.get<Worldview>('/worldview').then((res) => res.data),
+};
+
+export default api;
