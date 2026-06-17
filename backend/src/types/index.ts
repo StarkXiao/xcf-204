@@ -2,6 +2,7 @@ export interface JwtPayload {
   userId: number;
   username: string;
   role: string;
+  characterId: number | null;
 }
 
 export interface LoginRequest {
@@ -28,6 +29,7 @@ export interface EventCreate {
   description: string;
   result?: string;
   disposalStatus?: string;
+  isPublic?: boolean;
   characterIds?: number[];
 }
 

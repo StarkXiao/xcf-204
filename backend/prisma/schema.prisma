@@ -8,26 +8,29 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  username  String   @unique
-  password  String
-  role      String   @default("user")
-  createdAt DateTime @default(now())
+  id          Int       @id @default(autoincrement())
+  username    String    @unique
+  password    String
+  role        String    @default("user")
+  characterId Int?      @unique
+  character   Character? @relation(fields: [characterId], references: [id])
+  createdAt   DateTime  @default(now())
 }
 
 model Character {
-  id            Int              @id @default(autoincrement())
-  name          String
-  codeName      String?
-  ability       String
-  level         String
-  status        String
-  description   String?
-  avatar        String?
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-  events        EventCharacter[]
-  missions      MissionCharacter[]
+  id             Int              @id @default(autoincrement())
+  name           String
+  codeName       String?
+  ability        String
+  level          String
+  status         String
+  description    String?
+  avatar         String?
+  user           User?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  events         EventCharacter[]
+  missions       MissionCharacter[]
   levelHistories LevelHistory[]
 }
 
@@ -42,6 +45,7 @@ model Event {
   result             String?
   disposalStatus     String           @default("待处置")
   disposalConclusion String?
+  isPublic           Boolean          @default(true)
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
   characters         EventCharacter[]

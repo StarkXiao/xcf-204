@@ -5,16 +5,7 @@ const prisma = new PrismaClient();
 
 async function main() {
   const hashedPassword = await bcrypt.hash('admin123', 10);
-
-  await prisma.user.upsert({
-    where: { username: 'admin' },
-    update: {},
-    create: {
-      username: 'admin',
-      password: hashedPassword,
-      role: 'admin',
-    },
-  });
+  const userPassword = await bcrypt.hash('user123', 10);
 
   const chars = await Promise.all([
     prisma.character.upsert({
@@ -58,6 +49,38 @@ async function main() {
     }),
   ]);
 
+  await prisma.user.upsert({
+    where: { username: 'admin' },
+    update: {},
+    create: {
+      username: 'admin',
+      password: hashedPassword,
+      role: 'admin',
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { username: 'linye' },
+    update: {},
+    create: {
+      username: 'linye',
+      password: userPassword,
+      role: 'user',
+      characterId: chars[0].id,
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { username: 'suqing' },
+    update: {},
+    create: {
+      username: 'suqing',
+      password: userPassword,
+      role: 'user',
+      characterId: chars[1].id,
+    },
+  });
+
   const event = await prisma.event.create({
     data: {
       title: '银行抢劫案',
@@ -67,6 +90,13 @@ async function main() {
       location: '城市中心银行',
       description: '三名异能者抢劫银行，被小队成功制止。',
       result: '成功',
+      isPublic: true,
+      characters: {
+        create: [
+          { characterId: chars[0].id, role: '主攻手', contribution: '制服两名劫匪', missionResult: '成功' },
+          { characterId: chars[1].id, role: '支援', contribution: '封锁现场，防止平民受伤', missionResult: '成功' },
+        ],
+      },
     },
   });
 
@@ -77,11 +107,20 @@ async function main() {
       priority: '高',
       status: '进行中',
       dueDate: new Date('2024-02-01'),
+      eventId: event.id,
+      characters: {
+        create: [
+          { characterId: chars[0].id },
+          { characterId: chars[2].id },
+        ],
+      },
     },
   });
 
   console.log('种子数据创建完成！');
-  console.log('默认账号: admin / admin123');
+  console.log('管理员账号: admin / admin123');
+  console.log('普通用户账号: linye / user123 (角色: 林夜)');
+  console.log('普通用户账号: suqing / user123 (角色: 苏晴)');
 }
 
 main()

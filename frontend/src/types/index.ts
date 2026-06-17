@@ -2,6 +2,7 @@ export interface User {
   id: number;
   username: string;
   role: string;
+  characterId: number | null;
 }
 
 export interface Character {
@@ -31,6 +32,7 @@ export interface Event {
   result?: string;
   disposalStatus: string;
   disposalConclusion?: string;
+  isPublic: boolean;
   createdAt: string;
   updatedAt: string;
   characters?: EventCharacter[];

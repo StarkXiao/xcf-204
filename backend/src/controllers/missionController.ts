@@ -14,19 +14,47 @@ const missionSchema = z.object({
   characterIds: z.array(z.number()).optional(),
 });
 
-export const getMissions = async (_req: Request, res: Response) => {
-  const missions = await prisma.mission.findMany({
-    include: {
-      characters: { include: { character: true } },
-      event: true,
-    },
-    orderBy: { dueDate: 'asc' },
-  });
+export const getMissions = async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const isAdmin = user?.role === 'admin';
+  const characterId = user?.characterId;
+
+  let missions;
+  if (isAdmin) {
+    missions = await prisma.mission.findMany({
+      include: {
+        characters: { include: { character: true } },
+        event: true,
+      },
+      orderBy: { dueDate: 'asc' },
+    });
+  } else {
+    const where: any = {};
+    if (characterId) {
+      where.characters = {
+        some: { characterId },
+      };
+    } else {
+      where.id = -1;
+    }
+    missions = await prisma.mission.findMany({
+      where,
+      include: {
+        characters: { include: { character: true } },
+        event: true,
+      },
+      orderBy: { dueDate: 'asc' },
+    });
+  }
   res.json(missions);
 };
 
 export const getMission = async (req: Request, res: Response) => {
   const { id } = req.params;
+  const user = (req as any).user;
+  const isAdmin = user?.role === 'admin';
+  const characterId = user?.characterId;
+
   const mission = await prisma.mission.findUnique({
     where: { id: Number(id) },
     include: {
@@ -37,6 +65,14 @@ export const getMission = async (req: Request, res: Response) => {
   if (!mission) {
     return res.status(404).json({ message: '任务不存在' });
   }
+
+  if (!isAdmin) {
+    const isParticipant = characterId && mission.characters.some((mc) => mc.characterId === characterId);
+    if (!isParticipant) {
+      return res.status(403).json({ message: '无权访问该任务' });
+    }
+  }
+
   res.json(mission);
 };
 

@@ -14,6 +14,7 @@ const eventSchema = z.object({
   result: z.string().optional(),
   disposalStatus: z.string().optional(),
   disposalConclusion: z.string().optional(),
+  isPublic: z.boolean().optional(),
   characterIds: z.array(z.number()).optional(),
   characterRoles: z.array(z.object({
     characterId: z.number(),
@@ -35,19 +36,51 @@ const autoUpdateSchema = z.object({
   autoUpdateConclusion: z.boolean().default(true),
 });
 
-export const getEvents = async (_req: Request, res: Response) => {
-  const events = await prisma.event.findMany({
-    include: {
-      characters: { include: { character: true } },
-      missions: true,
-    },
-    orderBy: { date: 'desc' },
-  });
+export const getEvents = async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const isAdmin = user?.role === 'admin';
+  const characterId = user?.characterId;
+
+  let events;
+  if (isAdmin) {
+    events = await prisma.event.findMany({
+      include: {
+        characters: { include: { character: true } },
+        missions: true,
+      },
+      orderBy: { date: 'desc' },
+    });
+  } else {
+    const where: any = {
+      OR: [
+        { isPublic: true },
+      ],
+    };
+    if (characterId) {
+      where.OR.push({
+        characters: {
+          some: { characterId },
+        },
+      });
+    }
+    events = await prisma.event.findMany({
+      where,
+      include: {
+        characters: { include: { character: true } },
+        missions: true,
+      },
+      orderBy: { date: 'desc' },
+    });
+  }
   res.json(events);
 };
 
 export const getEvent = async (req: Request, res: Response) => {
   const { id } = req.params;
+  const user = (req as any).user;
+  const isAdmin = user?.role === 'admin';
+  const characterId = user?.characterId;
+
   const event = await prisma.event.findUnique({
     where: { id: Number(id) },
     include: {
@@ -58,6 +91,15 @@ export const getEvent = async (req: Request, res: Response) => {
   if (!event) {
     return res.status(404).json({ message: '事件不存在' });
   }
+
+  if (!isAdmin) {
+    const isPublic = event.isPublic;
+    const isParticipant = characterId && event.characters.some((ec) => ec.characterId === characterId);
+    if (!isPublic && !isParticipant) {
+      return res.status(403).json({ message: '无权访问该事件' });
+    }
+  }
+
   res.json(event);
 };
 

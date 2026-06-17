@@ -28,7 +28,7 @@ export const login = async (req: Request, res: Response) => {
     }
 
     const token = jwt.sign(
-      { userId: user.id, username: user.username, role: user.role },
+      { userId: user.id, username: user.username, role: user.role, characterId: user.characterId },
       process.env.JWT_SECRET!,
       { expiresIn: '24h' }
     );
@@ -39,6 +39,7 @@ export const login = async (req: Request, res: Response) => {
         id: user.id,
         username: user.username,
         role: user.role,
+        characterId: user.characterId,
       },
     });
   } catch (error) {
@@ -82,5 +83,6 @@ export const getProfile = (req: Request, res: Response) => {
     id: user.userId,
     username: user.username,
     role: user.role,
+    characterId: user.characterId,
   });
 };

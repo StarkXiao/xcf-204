@@ -40,6 +40,7 @@ const EventsPage = () => {
     description: '',
     result: '',
     disposalConclusion: '',
+    isPublic: true,
     characterIds: [] as number[],
     characterRoles: [] as {
       characterId: number;
@@ -167,6 +168,7 @@ const EventsPage = () => {
         description: event.description,
         result: event.result || '',
         disposalConclusion: event.disposalConclusion || '',
+        isPublic: event.isPublic !== undefined ? event.isPublic : true,
         characterIds: event.characters?.map((ec) => ec.characterId) || [],
         characterRoles: event.characters?.map((ec) => ({
           characterId: ec.characterId,
@@ -187,6 +189,7 @@ const EventsPage = () => {
         description: '',
         result: '',
         disposalConclusion: '',
+        isPublic: true,
         characterIds: [],
         characterRoles: [],
       });
@@ -310,7 +313,7 @@ const EventsPage = () => {
           >
             <div className="flex items-start justify-between gap-6">
               <div className="flex-1">
-                <div className="flex items-center gap-3 mb-3">
+                <div className="flex items-center gap-3 mb-3 flex-wrap">
                   <h3 className="text-xl font-bold">{event.title}</h3>
                   <Badge color={typeColors[event.type] || 'gray'}>{event.type}</Badge>
                   <Badge color={levelColors[event.level] || 'gray'}>{event.level}</Badge>
@@ -320,6 +323,9 @@ const EventsPage = () => {
                   {event.result && (
                     <Badge color={event.result === '成功' ? 'green' : 'red'}>{event.result}</Badge>
                   )}
+                  <Badge color={event.isPublic ? 'blue' : 'gray'} className="text-xs">
+                    {event.isPublic ? '🌐 公开' : '🔒 内部'}
+                  </Badge>
                 </div>
                 <div className="flex flex-wrap gap-4 text-sm text-[var(--text-secondary)] mb-4">
                   <span>📅 {new Date(event.date).toLocaleDateString('zh-CN')}</span>
@@ -420,6 +426,17 @@ const EventsPage = () => {
             rows={4}
           />
           <div className="mb-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={formData.isPublic}
+                onChange={(e) => setFormData({ ...formData, isPublic: e.target.checked })}
+                className="w-4 h-4 rounded bg-[var(--bg-tertiary)] border-[var(--border)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)]"
+              />
+              <span className="text-sm font-medium text-[var(--text-secondary)]">公开事件（普通用户可见）</span>
+            </label>
+          </div>
+          <div className="mb-4">
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">参与角色</label>
             <div className="flex flex-wrap gap-2">
               {characters.map((char) => (
@@ -488,6 +505,9 @@ const EventsPage = () => {
                     {selectedEvent.result}
                   </Badge>
                 )}
+                <Badge color={selectedEvent.isPublic ? 'blue' : 'gray'} className="text-xs">
+                  {selectedEvent.isPublic ? '🌐 公开' : '🔒 内部'}
+                </Badge>
               </div>
               <div className="flex flex-wrap gap-4 text-sm text-[var(--text-secondary)]">
                 <span>📅 {new Date(selectedEvent.date).toLocaleDateString('zh-CN')}</span>
