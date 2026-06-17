@@ -1,9 +1,10 @@
 interface BadgeProps {
   children: React.ReactNode;
   color?: 'purple' | 'green' | 'red' | 'yellow' | 'blue' | 'gray';
+  className?: string;
 }
 
-const Badge = ({ children, color = 'gray' }: BadgeProps) => {
+const Badge = ({ children, color = 'gray', className = '' }: BadgeProps) => {
   const colors = {
     purple: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
     green: 'bg-green-500/20 text-green-300 border-green-500/30',
@@ -14,7 +15,7 @@ const Badge = ({ children, color = 'gray' }: BadgeProps) => {
   };
 
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${colors[color]}`}>
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${colors[color]} ${className}`}>
       {children}
     </span>
   );

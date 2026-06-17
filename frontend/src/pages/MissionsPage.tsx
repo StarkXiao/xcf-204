@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { missionAPI, characterAPI } from '../api';
-import { Mission, Character } from '../types';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { missionAPI, characterAPI, eventAPI } from '../api';
+import { Mission, Character, Event } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import Modal from '../components/Modal';
 import { Button, InputField, SelectField, TextareaField } from '../components/FormField';
@@ -9,8 +10,11 @@ import Badge from '../components/Badge';
 const MissionsPage = () => {
   const [missions, setMissions] = useState<Mission[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [selectedMission, setSelectedMission] = useState<Mission | null>(null);
   const [editingMission, setEditingMission] = useState<Mission | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('list');
@@ -23,11 +27,14 @@ const MissionsPage = () => {
     characterIds: [] as number[],
   });
   const { isAdmin } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const loadData = () => {
-    Promise.all([missionAPI.getAll(), characterAPI.getAll()]).then(([m, c]) => {
+    Promise.all([missionAPI.getAll(), characterAPI.getAll(), eventAPI.getAll()]).then(([m, c, e]) => {
       setMissions(m);
       setCharacters(c);
+      setEvents(e);
       setLoading(false);
     });
   };
@@ -35,6 +42,32 @@ const MissionsPage = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    const missionId = searchParams.get('missionId');
+    if (missionId && !loading && missions.length > 0) {
+      const mission = missions.find((m) => m.id === Number(missionId));
+      if (mission && !detailModalOpen) {
+        setSelectedMission(mission);
+        setDetailModalOpen(true);
+      }
+    }
+  }, [searchParams, missions, loading, detailModalOpen]);
+
+  const closeDetailModal = () => {
+    setDetailModalOpen(false);
+    setSelectedMission(null);
+    searchParams.delete('missionId');
+    setSearchParams(searchParams);
+  };
+
+  const goToCharacterDetail = (characterId: number) => {
+    navigate(`/characters?characterId=${characterId}`);
+  };
+
+  const goToEventDetail = (eventId: number) => {
+    navigate(`/events?eventId=${eventId}`);
+  };
 
   const openModal = (mission?: Mission) => {
     if (mission) {
@@ -63,6 +96,11 @@ const MissionsPage = () => {
     setModalOpen(true);
   };
 
+  const openDetail = (mission: Mission) => {
+    setSelectedMission(mission);
+    setDetailModalOpen(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -85,6 +123,19 @@ const MissionsPage = () => {
     }
   };
 
+  const getMissionCharacters = (missionId: number) => {
+    const mission = missions.find((m) => m.id === missionId);
+    return mission?.characters?.map((mc) => mc.character) || [];
+  };
+
+  const getMissionEvents = (missionId: number) => {
+    const mission = missions.find((m) => m.id === missionId);
+    const missionCharIds = mission?.characters?.map((mc) => mc.characterId) || [];
+    return events.filter((e) =>
+      e.characters?.some((ec) => missionCharIds.includes(ec.characterId))
+    );
+  };
+
   const priorityColors: Record<string, 'red' | 'yellow' | 'blue'> = {
     '高': 'red',
     '中': 'yellow',
@@ -96,6 +147,30 @@ const MissionsPage = () => {
     '进行中': 'green',
     '已完成': 'purple',
     '已取消': 'gray',
+  };
+
+  const charLevelColors: Record<string, 'purple' | 'red' | 'yellow' | 'blue' | 'gray'> = {
+    'S级': 'purple',
+    'A级': 'red',
+    'B级': 'yellow',
+    'C级': 'blue',
+    'D级': 'gray',
+  };
+
+  const typeColors: Record<string, 'red' | 'yellow' | 'blue' | 'green' | 'purple'> = {
+    '战斗': 'red',
+    '救援': 'green',
+    '侦察': 'blue',
+    '谈判': 'yellow',
+    '其他': 'purple',
+  };
+
+  const eventLevelColors: Record<string, 'purple' | 'red' | 'yellow' | 'blue' | 'gray'> = {
+    'S级': 'purple',
+    'A级': 'red',
+    'B级': 'yellow',
+    'C级': 'blue',
+    'D级': 'gray',
   };
 
   const getDaysInMonth = (date: Date) => {
@@ -210,8 +285,12 @@ const MissionsPage = () => {
                         {dayMissions.slice(0, 2).map((mission) => (
                           <div
                             key={mission.id}
-                            className="text-xs p-1 rounded truncate bg-[var(--accent-primary)]/30"
+                            className="text-xs p-1 rounded truncate bg-[var(--accent-primary)]/30 cursor-pointer hover:bg-[var(--accent-primary)]/50"
                             title={mission.title}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openDetail(mission);
+                            }}
                           >
                             {mission.title}
                           </div>
@@ -233,7 +312,8 @@ const MissionsPage = () => {
         {missions.map((mission) => (
           <div
             key={mission.id}
-            className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl p-6 hover:border-[var(--accent-primary)] transition-colors"
+            className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl p-6 hover:border-[var(--accent-primary)] transition-colors cursor-pointer"
+            onClick={() => openDetail(mission)}
           >
             <div className="flex items-start justify-between gap-6">
               <div className="flex-1">
@@ -261,16 +341,6 @@ const MissionsPage = () => {
                   </div>
                 )}
               </div>
-              {isAdmin && (
-                <div className="flex flex-col gap-2">
-                  <Button variant="secondary" className="text-sm py-2 px-4" onClick={() => openModal(mission)}>
-                    编辑
-                  </Button>
-                  <Button variant="danger" className="text-sm py-2 px-4" onClick={() => handleDelete(mission.id)}>
-                    删除
-                  </Button>
-                </div>
-              )}
             </div>
           </div>
         ))}
@@ -371,6 +441,137 @@ const MissionsPage = () => {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={detailModalOpen}
+        onClose={closeDetailModal}
+        title="任务详情"
+      >
+        {selectedMission && (
+          <div className="space-y-6">
+            <div>
+              <div className="flex flex-wrap items-center gap-3 mb-3">
+                <h2 className="text-2xl font-bold">{selectedMission.title}</h2>
+                <Badge color={priorityColors[selectedMission.priority] || 'gray'}>
+                  {selectedMission.priority}优先级
+                </Badge>
+                <Badge color={statusColors[selectedMission.status] || 'gray'}>
+                  {selectedMission.status}
+                </Badge>
+              </div>
+              <div className="text-sm text-[var(--text-secondary)]">
+                📅 截止日期: {new Date(selectedMission.dueDate).toLocaleDateString('zh-CN')}
+              </div>
+            </div>
+
+            <div className="bg-[var(--bg-tertiary)] rounded-xl p-4">
+              <h3 className="font-medium mb-2">任务描述</h3>
+              <p className="text-[var(--text-secondary)] text-sm">{selectedMission.description}</p>
+            </div>
+
+            <div className="border-t border-[var(--border)] pt-4">
+              <h3 className="font-medium mb-3 flex items-center gap-2">
+                <span>👤</span> 执行角色 ({getMissionCharacters(selectedMission.id).length})
+              </h3>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {getMissionCharacters(selectedMission.id).length === 0 ? (
+                  <p className="text-sm text-[var(--text-secondary)]">暂无执行角色</p>
+                ) : (
+                  getMissionCharacters(selectedMission.id).map((char) => (
+                    <div
+                      key={char.id}
+                      className="bg-[var(--bg-tertiary)] rounded-lg p-3 hover:bg-[var(--border)] transition-colors cursor-pointer flex items-center gap-3"
+                      onClick={() => goToCharacterDetail(char.id)}
+                    >
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-secondary)] flex items-center justify-center text-xl">
+                        {char.avatar || '👤'}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{char.name}</span>
+                          {char.codeName && (
+                            <span className="text-xs text-[var(--text-secondary)]">「{char.codeName}」</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-[var(--text-secondary)]">
+                          {char.ability}
+                        </div>
+                      </div>
+                      <Badge color={charLevelColors[char.level] || 'gray'} className="text-xs">
+                        {char.level}
+                      </Badge>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="border-t border-[var(--border)] pt-4">
+              <h3 className="font-medium mb-3 flex items-center gap-2">
+                <span>📋</span> 关联事件 ({getMissionEvents(selectedMission.id).length})
+                <span className="text-xs text-[var(--text-secondary)] font-normal">
+                  （通过共同角色关联）
+                </span>
+              </h3>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {getMissionEvents(selectedMission.id).length === 0 ? (
+                  <p className="text-sm text-[var(--text-secondary)]">暂无关联事件</p>
+                ) : (
+                  getMissionEvents(selectedMission.id).map((event) => (
+                    <div
+                      key={event.id}
+                      className="bg-[var(--bg-tertiary)] rounded-lg p-3 hover:bg-[var(--border)] transition-colors cursor-pointer"
+                      onClick={() => goToEventDetail(event.id)}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium">{event.title}</span>
+                        <div className="flex gap-1">
+                          <Badge color={typeColors[event.type] || 'gray'} className="text-xs">
+                            {event.type}
+                          </Badge>
+                          <Badge color={eventLevelColors[event.level] || 'gray'} className="text-xs">
+                            {event.level}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="text-xs text-[var(--text-secondary)]">
+                        📅 {new Date(event.date).toLocaleDateString('zh-CN')} · 📍 {event.location}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {isAdmin && (
+              <div className="flex gap-2 pt-4 border-t border-[var(--border)]">
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={() => {
+                    setDetailModalOpen(false);
+                    openModal(selectedMission);
+                  }}
+                >
+                  编辑
+                </Button>
+                <Button
+                  variant="danger"
+                  className="flex-1"
+                  onClick={() => {
+                    if (confirm('确定要删除这个任务吗？')) {
+                      handleDelete(selectedMission.id);
+                      setDetailModalOpen(false);
+                    }
+                  }}
+                >
+                  删除
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
       </Modal>
     </div>
   );

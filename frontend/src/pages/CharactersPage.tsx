@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { characterAPI } from '../api';
-import { Character } from '../types';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { characterAPI, eventAPI, missionAPI } from '../api';
+import { Character, Event, Mission } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import Modal from '../components/Modal';
 import { Button, InputField, SelectField, TextareaField } from '../components/FormField';
@@ -8,8 +9,12 @@ import Badge from '../components/Badge';
 
 const CharactersPage = () => {
   const [characters, setCharacters] = useState<Character[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [missions, setMissions] = useState<Mission[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [selectedChar, setSelectedChar] = useState<Character | null>(null);
   const [editingChar, setEditingChar] = useState<Character | null>(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -21,10 +26,14 @@ const CharactersPage = () => {
     avatar: '',
   });
   const { isAdmin } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const loadData = () => {
-    characterAPI.getAll().then((data) => {
-      setCharacters(data);
+    Promise.all([characterAPI.getAll(), eventAPI.getAll(), missionAPI.getAll()]).then(([c, e, m]) => {
+      setCharacters(c);
+      setEvents(e);
+      setMissions(m);
       setLoading(false);
     });
   };
@@ -32,6 +41,32 @@ const CharactersPage = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    const charId = searchParams.get('characterId');
+    if (charId && !loading && characters.length > 0) {
+      const char = characters.find((c) => c.id === Number(charId));
+      if (char && !detailModalOpen) {
+        setSelectedChar(char);
+        setDetailModalOpen(true);
+      }
+    }
+  }, [searchParams, characters, loading, detailModalOpen]);
+
+  const closeDetailModal = () => {
+    setDetailModalOpen(false);
+    setSelectedChar(null);
+    searchParams.delete('characterId');
+    setSearchParams(searchParams);
+  };
+
+  const goToEventDetail = (eventId: number) => {
+    navigate(`/events?eventId=${eventId}`);
+  };
+
+  const goToMissionDetail = (missionId: number) => {
+    navigate(`/missions?missionId=${missionId}`);
+  };
 
   const openModal = (char?: Character) => {
     if (char) {
@@ -60,6 +95,11 @@ const CharactersPage = () => {
     setModalOpen(true);
   };
 
+  const openDetail = (char: Character) => {
+    setSelectedChar(char);
+    setDetailModalOpen(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -82,6 +122,14 @@ const CharactersPage = () => {
     }
   };
 
+  const getCharEvents = (charId: number) => {
+    return events.filter((e) => e.characters?.some((ec) => ec.characterId === charId));
+  };
+
+  const getCharMissions = (charId: number) => {
+    return missions.filter((m) => m.characters?.some((mc) => mc.characterId === charId));
+  };
+
   const levelColors: Record<string, 'purple' | 'red' | 'yellow' | 'blue' | 'gray'> = {
     'S级': 'purple',
     'A级': 'red',
@@ -94,6 +142,27 @@ const CharactersPage = () => {
     '活跃': 'green',
     '待命': 'yellow',
     '离线': 'gray',
+  };
+
+  const priorityColors: Record<string, 'red' | 'yellow' | 'blue'> = {
+    '高': 'red',
+    '中': 'yellow',
+    '低': 'blue',
+  };
+
+  const missionStatusColors: Record<string, 'yellow' | 'green' | 'purple' | 'gray'> = {
+    '待处理': 'gray',
+    '进行中': 'green',
+    '已完成': 'purple',
+    '已取消': 'gray',
+  };
+
+  const typeColors: Record<string, 'red' | 'yellow' | 'blue' | 'green' | 'purple'> = {
+    '战斗': 'red',
+    '救援': 'green',
+    '侦察': 'blue',
+    '谈判': 'yellow',
+    '其他': 'purple',
   };
 
   if (loading) {
@@ -120,7 +189,8 @@ const CharactersPage = () => {
         {characters.map((char) => (
           <div
             key={char.id}
-            className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl p-6 hover:border-[var(--accent-primary)] transition-colors"
+            className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl p-6 hover:border-[var(--accent-primary)] transition-colors cursor-pointer"
+            onClick={() => openDetail(char)}
           >
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-4">
@@ -148,21 +218,10 @@ const CharactersPage = () => {
               <p className="text-sm text-[var(--text-secondary)] mb-4 line-clamp-2">{char.description}</p>
             )}
 
-            <div className="text-xs text-[var(--text-secondary)] mb-4">
-              <p>参与事件: {char.events?.length || 0} 次</p>
-              <p>执行任务: {char.missions?.length || 0} 个</p>
+            <div className="text-xs text-[var(--text-secondary)]">
+              <p>参与事件: {getCharEvents(char.id).length} 次</p>
+              <p>执行任务: {getCharMissions(char.id).length} 个</p>
             </div>
-
-            {isAdmin && (
-              <div className="flex gap-2">
-                <Button variant="secondary" className="flex-1 text-sm py-2" onClick={() => openModal(char)}>
-                  编辑
-                </Button>
-                <Button variant="danger" className="flex-1 text-sm py-2" onClick={() => handleDelete(char.id)}>
-                  删除
-                </Button>
-              </div>
-            )}
           </div>
         ))}
       </div>
@@ -243,6 +302,130 @@ const CharactersPage = () => {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={detailModalOpen}
+        onClose={closeDetailModal}
+        title="角色详情"
+      >
+        {selectedChar && (
+          <div className="space-y-6">
+            <div className="flex items-start gap-4">
+              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-secondary)] flex items-center justify-center text-4xl shrink-0">
+                {selectedChar.avatar || '👤'}
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <h2 className="text-2xl font-bold">{selectedChar.name}</h2>
+                  {selectedChar.codeName && (
+                    <span className="text-[var(--text-secondary)]">「{selectedChar.codeName}」</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <Badge color={levelColors[selectedChar.level] || 'gray'}>{selectedChar.level}</Badge>
+                  <Badge color={statusColors[selectedChar.status] || 'gray'}>{selectedChar.status}</Badge>
+                </div>
+                <p className="text-[var(--text-secondary)]">异能: {selectedChar.ability}</p>
+              </div>
+            </div>
+
+            {selectedChar.description && (
+              <div className="bg-[var(--bg-tertiary)] rounded-xl p-4">
+                <h3 className="font-medium mb-2">角色简介</h3>
+                <p className="text-[var(--text-secondary)] text-sm">{selectedChar.description}</p>
+              </div>
+            )}
+
+            <div className="border-t border-[var(--border)] pt-4">
+              <h3 className="font-medium mb-3 flex items-center gap-2">
+                <span>📋</span> 关联事件 ({getCharEvents(selectedChar.id).length})
+              </h3>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {getCharEvents(selectedChar.id).length === 0 ? (
+                  <p className="text-sm text-[var(--text-secondary)]">暂无关联事件</p>
+                ) : (
+                  getCharEvents(selectedChar.id).map((event) => (
+                    <div
+                      key={event.id}
+                      className="bg-[var(--bg-tertiary)] rounded-lg p-3 hover:bg-[var(--border)] transition-colors cursor-pointer"
+                      onClick={() => goToEventDetail(event.id)}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium">{event.title}</span>
+                        <Badge color={typeColors[event.type] || 'gray'} className="text-xs">
+                          {event.type}
+                        </Badge>
+                      </div>
+                      <div className="text-xs text-[var(--text-secondary)]">
+                        📅 {new Date(event.date).toLocaleDateString('zh-CN')} · 📍 {event.location}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="border-t border-[var(--border)] pt-4">
+              <h3 className="font-medium mb-3 flex items-center gap-2">
+                <span>📅</span> 待办任务 ({getCharMissions(selectedChar.id).filter((m) => m.status !== '已完成' && m.status !== '已取消').length})
+              </h3>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {getCharMissions(selectedChar.id).length === 0 ? (
+                  <p className="text-sm text-[var(--text-secondary)]">暂无待办任务</p>
+                ) : (
+                  getCharMissions(selectedChar.id).map((mission) => (
+                    <div
+                      key={mission.id}
+                      className="bg-[var(--bg-tertiary)] rounded-lg p-3 hover:bg-[var(--border)] transition-colors cursor-pointer"
+                      onClick={() => goToMissionDetail(mission.id)}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium">{mission.title}</span>
+                        <Badge color={priorityColors[mission.priority] || 'gray'} className="text-xs">
+                          {mission.priority}优先级
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                        <span>📅 截止: {new Date(mission.dueDate).toLocaleDateString('zh-CN')}</span>
+                        <Badge color={missionStatusColors[mission.status] || 'gray'} className="text-xs">
+                          {mission.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {isAdmin && (
+              <div className="flex gap-2 pt-4 border-t border-[var(--border)]">
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={() => {
+                    setDetailModalOpen(false);
+                    openModal(selectedChar);
+                  }}
+                >
+                  编辑
+                </Button>
+                <Button
+                  variant="danger"
+                  className="flex-1"
+                  onClick={() => {
+                    if (confirm('确定要删除这个角色吗？')) {
+                      handleDelete(selectedChar.id);
+                      setDetailModalOpen(false);
+                    }
+                  }}
+                >
+                  删除
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
       </Modal>
     </div>
   );

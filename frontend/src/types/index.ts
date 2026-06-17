@@ -15,8 +15,8 @@ export interface Character {
   avatar?: string;
   createdAt: string;
   updatedAt: string;
-  events?: EventCharacter[];
-  missions?: MissionCharacter[];
+  events?: CharacterEvent[];
+  missions?: CharacterMission[];
 }
 
 export interface Event {
@@ -57,6 +57,20 @@ export interface MissionCharacter {
   characterId: number;
   role?: string;
   character: Character;
+}
+
+export interface CharacterEvent {
+  eventId: number;
+  characterId: number;
+  role?: string;
+  event: Event;
+}
+
+export interface CharacterMission {
+  missionId: number;
+  characterId: number;
+  role?: string;
+  mission: Mission;
 }
 
 export interface Worldview {
