@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Character, Event, Mission, LoginResponse, Worldview, LevelHistory } from '../types';
+import { Character, Event, Mission, LoginResponse, Worldview, LevelHistory, EventCharacter } from '../types';
 
 const api = axios.create({
   baseURL: '/api',
@@ -41,6 +41,14 @@ export const eventAPI = {
   create: (data: any) => api.post<Event>('/events', data).then((res) => res.data),
   update: (id: number, data: any) => api.put<Event>(`/events/${id}`, data).then((res) => res.data),
   delete: (id: number) => api.delete(`/events/${id}`).then((res) => res.data),
+  updateCharacterRole: (eventId: number, characterId: number, data: {
+    role?: string;
+    contribution?: string;
+    missionResult?: string;
+    collaboration?: string;
+  }) => api.put<EventCharacter>(`/events/${eventId}/characters/${characterId}/role`, data).then((res) => res.data),
+  autoUpdateConclusion: (id: number, autoUpdate: boolean = true) =>
+    api.post<Event>(`/events/${id}/auto-update-conclusion`, { autoUpdateConclusion: autoUpdate }).then((res) => res.data),
 };
 
 export const missionAPI = {

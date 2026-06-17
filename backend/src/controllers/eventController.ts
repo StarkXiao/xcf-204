@@ -13,7 +13,26 @@ const eventSchema = z.object({
   description: z.string().min(1),
   result: z.string().optional(),
   disposalStatus: z.string().optional(),
+  disposalConclusion: z.string().optional(),
   characterIds: z.array(z.number()).optional(),
+  characterRoles: z.array(z.object({
+    characterId: z.number(),
+    role: z.string().optional(),
+    contribution: z.string().optional(),
+    missionResult: z.string().optional(),
+    collaboration: z.string().optional(),
+  })).optional(),
+});
+
+const updateCharacterRoleSchema = z.object({
+  role: z.string().optional(),
+  contribution: z.string().optional(),
+  missionResult: z.string().optional(),
+  collaboration: z.string().optional(),
+});
+
+const autoUpdateSchema = z.object({
+  autoUpdateConclusion: z.boolean().default(true),
 });
 
 export const getEvents = async (_req: Request, res: Response) => {
@@ -44,13 +63,18 @@ export const getEvent = async (req: Request, res: Response) => {
 
 export const createEvent = async (req: Request, res: Response) => {
   try {
-    const { characterIds, disposalStatus, ...data } = eventSchema.parse(req.body);
+    const { characterIds, characterRoles, disposalStatus, ...data } = eventSchema.parse(req.body);
     
     let finalStatus = disposalStatus || '待处置';
     if (data.result) {
       finalStatus = '已完成';
     } else if (characterIds && characterIds.length > 0) {
       finalStatus = '处置中';
+    }
+
+    const roleMap = new Map<number, any>();
+    if (characterRoles) {
+      characterRoles.forEach((cr) => roleMap.set(cr.characterId, cr));
     }
     
     const event = await prisma.event.create({
@@ -60,9 +84,16 @@ export const createEvent = async (req: Request, res: Response) => {
         date: new Date(data.date),
         characters: characterIds
           ? {
-              create: characterIds.map((id) => ({
-                character: { connect: { id } },
-              })),
+              create: characterIds.map((id) => {
+                const roleData = roleMap.get(id);
+                return {
+                  character: { connect: { id } },
+                  role: roleData?.role,
+                  contribution: roleData?.contribution,
+                  missionResult: roleData?.missionResult,
+                  collaboration: roleData?.collaboration,
+                };
+              }),
             }
           : undefined,
       },
@@ -81,9 +112,13 @@ export const createEvent = async (req: Request, res: Response) => {
 export const updateEvent = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { characterIds, disposalStatus, ...data } = eventSchema.parse(req.body);
+    const { characterIds, characterRoles, disposalStatus, ...data } = eventSchema.parse(req.body);
 
-    await prisma.eventCharacter.deleteMany({ where: { eventId: Number(id) } });
+    const eventId = Number(id);
+
+    if (characterIds) {
+      await prisma.eventCharacter.deleteMany({ where: { eventId } });
+    }
 
     let finalStatus = disposalStatus;
     if (data.result) {
@@ -91,21 +126,33 @@ export const updateEvent = async (req: Request, res: Response) => {
     } else if (characterIds && characterIds.length > 0) {
       finalStatus = '处置中';
     } else if (!finalStatus) {
-      const existingEvent = await prisma.event.findUnique({ where: { id: Number(id) } });
+      const existingEvent = await prisma.event.findUnique({ where: { id: eventId } });
       finalStatus = existingEvent?.disposalStatus || '待处置';
     }
 
+    const roleMap = new Map<number, any>();
+    if (characterRoles) {
+      characterRoles.forEach((cr) => roleMap.set(cr.characterId, cr));
+    }
+
     const event = await prisma.event.update({
-      where: { id: Number(id) },
+      where: { id: eventId },
       data: {
         ...data,
         disposalStatus: finalStatus,
         date: new Date(data.date),
         characters: characterIds
           ? {
-              create: characterIds.map((cid) => ({
-                character: { connect: { id: cid } },
-              })),
+              create: characterIds.map((cid) => {
+                const roleData = roleMap.get(cid);
+                return {
+                  character: { connect: { id: cid } },
+                  role: roleData?.role,
+                  contribution: roleData?.contribution,
+                  missionResult: roleData?.missionResult,
+                  collaboration: roleData?.collaboration,
+                };
+              }),
             }
           : undefined,
       },
@@ -116,7 +163,109 @@ export const updateEvent = async (req: Request, res: Response) => {
     });
     res.json(event);
   } catch (error) {
+    console.error(error);
     res.status(400).json({ message: '更新失败' });
+  }
+};
+
+export const updateEventCharacterRole = async (req: Request, res: Response) => {
+  try {
+    const { eventId, characterId } = req.params;
+    const data = updateCharacterRoleSchema.parse(req.body);
+
+    const eventCharacter = await prisma.eventCharacter.update({
+      where: {
+        eventId_characterId: {
+          eventId: Number(eventId),
+          characterId: Number(characterId),
+        },
+      },
+      data: {
+        role: data.role,
+        contribution: data.contribution,
+        missionResult: data.missionResult,
+        collaboration: data.collaboration,
+      },
+      include: {
+        character: true,
+      },
+    });
+
+    res.json(eventCharacter);
+  } catch (error) {
+    console.error(error);
+    res.status(400).json({ message: '更新角色分工失败' });
+  }
+};
+
+export const autoUpdateEventConclusion = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { autoUpdateConclusion } = autoUpdateSchema.parse(req.body);
+
+    const event = await prisma.event.findUnique({
+      where: { id: Number(id) },
+      include: {
+        missions: true,
+        characters: { include: { character: true } },
+      },
+    });
+
+    if (!event) {
+      return res.status(404).json({ message: '事件不存在' });
+    }
+
+    const completedMissions = event.missions.filter((m) => m.status === '已完成');
+    const allMissionsCompleted = event.missions.length > 0 && completedMissions.length === event.missions.length;
+
+    let disposalConclusion = event.disposalConclusion;
+    let result = event.result;
+    let disposalStatus = event.disposalStatus;
+
+    if (autoUpdateConclusion && allMissionsCompleted) {
+      const collaborationRecords = event.characters
+        .map((ec) => {
+          const char = ec.character;
+          const parts = [];
+          if (ec.role) parts.push(`【${ec.role}】`);
+          parts.push(char.name);
+          if (ec.missionResult) parts.push(`- 任务结果: ${ec.missionResult}`);
+          if (ec.contribution) parts.push(`- 贡献: ${ec.contribution}`);
+          return parts.join('');
+        })
+        .filter(Boolean)
+        .join('\n');
+
+      const successCount = event.characters.filter((ec) => ec.missionResult === '成功').length;
+      const totalChars = event.characters.length;
+      const overallResult = successCount === totalChars ? '成功' : successCount > 0 ? '部分成功' : '失败';
+
+      disposalConclusion = `事件处置结论：\n` +
+        `共计 ${event.missions.length} 个任务，已全部完成。\n` +
+        `参与角色 ${totalChars} 人，成功完成 ${successCount} 人。\n\n` +
+        `角色协作记录：\n${collaborationRecords}`;
+
+      result = overallResult;
+      disposalStatus = '已完成';
+    }
+
+    const updatedEvent = await prisma.event.update({
+      where: { id: Number(id) },
+      data: {
+        disposalConclusion,
+        result,
+        disposalStatus,
+      },
+      include: {
+        characters: { include: { character: true } },
+        missions: true,
+      },
+    });
+
+    res.json(updatedEvent);
+  } catch (error) {
+    console.error(error);
+    res.status(400).json({ message: '自动更新处置结论失败' });
   }
 };
 

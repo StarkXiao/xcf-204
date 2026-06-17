@@ -32,20 +32,21 @@ model Character {
 }
 
 model Event {
-  id             Int              @id @default(autoincrement())
-  title          String
-  type           String
-  level          String
-  date           DateTime
-  location       String
-  description    String
-  result         String?
-  disposalStatus String           @default("待处置")
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  characters     EventCharacter[]
-  missions       Mission[]
-  levelHistories LevelHistory[]
+  id                 Int              @id @default(autoincrement())
+  title              String
+  type               String
+  level              String
+  date               DateTime
+  location           String
+  description        String
+  result             String?
+  disposalStatus     String           @default("待处置")
+  disposalConclusion String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  characters         EventCharacter[]
+  missions           Mission[]
+  levelHistories     LevelHistory[]
 }
 
 model Mission {
@@ -64,11 +65,14 @@ model Mission {
 }
 
 model EventCharacter {
-  eventId     Int
-  characterId Int
-  role        String?
-  event       Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  eventId        Int
+  characterId    Int
+  role           String?
+  contribution   String?
+  missionResult  String?
+  collaboration  String?
+  event          Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  character      Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
 
   @@id([eventId, characterId])
 }

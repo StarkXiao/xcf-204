@@ -30,6 +30,7 @@ export interface Event {
   description: string;
   result?: string;
   disposalStatus: string;
+  disposalConclusion?: string;
   createdAt: string;
   updatedAt: string;
   characters?: EventCharacter[];
@@ -54,6 +55,9 @@ export interface EventCharacter {
   eventId: number;
   characterId: number;
   role?: string;
+  contribution?: string;
+  missionResult?: string;
+  collaboration?: string;
   character: Character;
 }
 

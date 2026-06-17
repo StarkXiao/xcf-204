@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { eventAPI, characterAPI, missionAPI } from '../api';
-import { Event, Character, Mission } from '../types';
+import { Event, Character, Mission, EventCharacter } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import Modal from '../components/Modal';
 import { Button, InputField, SelectField, TextareaField } from '../components/FormField';
@@ -15,13 +15,21 @@ const EventsPage = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [levelUpModalOpen, setLevelUpModalOpen] = useState(false);
+  const [roleModalOpen, setRoleModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [levelUpChar, setLevelUpChar] = useState<Character | null>(null);
+  const [editingRoleChar, setEditingRoleChar] = useState<EventCharacter | null>(null);
   const [levelUpForm, setLevelUpForm] = useState({
     newLevel: '',
     reason: '',
     description: '',
+  });
+  const [roleForm, setRoleForm] = useState({
+    role: '',
+    contribution: '',
+    missionResult: '',
+    collaboration: '',
   });
   const [formData, setFormData] = useState({
     title: '',
@@ -31,7 +39,15 @@ const EventsPage = () => {
     location: '',
     description: '',
     result: '',
+    disposalConclusion: '',
     characterIds: [] as number[],
+    characterRoles: [] as {
+      characterId: number;
+      role?: string;
+      contribution?: string;
+      missionResult?: string;
+      collaboration?: string;
+    }[],
   });
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
@@ -104,6 +120,41 @@ const EventsPage = () => {
     }
   };
 
+  const openRoleModal = (eventChar: EventCharacter) => {
+    setEditingRoleChar(eventChar);
+    setRoleForm({
+      role: eventChar.role || '',
+      contribution: eventChar.contribution || '',
+      missionResult: eventChar.missionResult || '',
+      collaboration: eventChar.collaboration || '',
+    });
+    setRoleModalOpen(true);
+  };
+
+  const handleUpdateRole = async () => {
+    if (!editingRoleChar || !selectedEvent) return;
+    try {
+      await eventAPI.updateCharacterRole(selectedEvent.id, editingRoleChar.characterId, roleForm);
+      setRoleModalOpen(false);
+      loadData();
+      alert('角色分工更新成功');
+    } catch (err: any) {
+      alert(err.response?.data?.message || '操作失败');
+    }
+  };
+
+  const handleAutoUpdateConclusion = async () => {
+    if (!selectedEvent) return;
+    try {
+      const updatedEvent = await eventAPI.autoUpdateConclusion(selectedEvent.id, true);
+      setSelectedEvent(updatedEvent);
+      loadData();
+      alert('事件处置结论已自动更新');
+    } catch (err: any) {
+      alert(err.response?.data?.message || '操作失败');
+    }
+  };
+
   const openModal = (event?: Event) => {
     if (event) {
       setEditingEvent(event);
@@ -115,7 +166,15 @@ const EventsPage = () => {
         location: event.location,
         description: event.description,
         result: event.result || '',
+        disposalConclusion: event.disposalConclusion || '',
         characterIds: event.characters?.map((ec) => ec.characterId) || [],
+        characterRoles: event.characters?.map((ec) => ({
+          characterId: ec.characterId,
+          role: ec.role,
+          contribution: ec.contribution,
+          missionResult: ec.missionResult,
+          collaboration: ec.collaboration,
+        })) || [],
       });
     } else {
       setEditingEvent(null);
@@ -127,7 +186,9 @@ const EventsPage = () => {
         location: '',
         description: '',
         result: '',
+        disposalConclusion: '',
         characterIds: [],
+        characterRoles: [],
       });
     }
     setModalOpen(true);
@@ -351,6 +412,13 @@ const EventsPage = () => {
               { value: '处理中', label: '处理中' },
             ]}
           />
+          <TextareaField
+            label="处置结论"
+            value={formData.disposalConclusion}
+            onChange={(e) => setFormData({ ...formData, disposalConclusion: e.target.value })}
+            placeholder="事件处置的总结结论，可通过自动生成功能填写..."
+            rows={4}
+          />
           <div className="mb-4">
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">参与角色</label>
             <div className="flex flex-wrap gap-2">
@@ -434,55 +502,104 @@ const EventsPage = () => {
 
             <div className="border-t border-[var(--border)] pt-4">
               <h3 className="font-medium mb-3 flex items-center gap-2">
-                <span>👤</span> 参与角色 ({getEventCharacters(selectedEvent.id).length})
+                <span>👤</span> 参与角色与分工 ({selectedEvent.characters?.length || 0})
               </h3>
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {getEventCharacters(selectedEvent.id).length === 0 ? (
+              <div className="space-y-3 max-h-80 overflow-y-auto">
+                {!selectedEvent.characters || selectedEvent.characters.length === 0 ? (
                   <p className="text-sm text-[var(--text-secondary)]">暂无参与角色</p>
                 ) : (
-                  getEventCharacters(selectedEvent.id).map((char) => (
+                  selectedEvent.characters.map((ec) => (
                     <div
-                      key={char.id}
-                      className="bg-[var(--bg-tertiary)] rounded-lg p-3 hover:bg-[var(--border)] transition-colors"
+                      key={ec.characterId}
+                      className="bg-[var(--bg-tertiary)] rounded-lg p-4 hover:bg-[var(--border)] transition-colors"
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-start gap-3">
                         <div
-                          className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-secondary)] flex items-center justify-center text-xl cursor-pointer"
-                          onClick={() => goToCharacterDetail(char.id)}
+                          className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-secondary)] flex items-center justify-center text-xl cursor-pointer flex-shrink-0"
+                          onClick={() => goToCharacterDetail(ec.characterId)}
                         >
-                          {char.avatar || '👤'}
+                          {ec.character.avatar || '👤'}
                         </div>
-                        <div className="flex-1 cursor-pointer" onClick={() => goToCharacterDetail(char.id)}>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{char.name}</span>
-                            {char.codeName && (
-                              <span className="text-xs text-[var(--text-secondary)]">「{char.codeName}」</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className="font-medium">{ec.character.name}</span>
+                            {ec.character.codeName && (
+                              <span className="text-xs text-[var(--text-secondary)]">「{ec.character.codeName}」</span>
+                            )}
+                            {ec.role && (
+                              <Badge color="purple" className="text-xs">
+                                {ec.role}
+                              </Badge>
+                            )}
+                            {ec.missionResult && (
+                              <Badge
+                                color={ec.missionResult === '成功' ? 'green' : ec.missionResult === '失败' ? 'red' : 'yellow'}
+                                className="text-xs"
+                              >
+                                {ec.missionResult}
+                              </Badge>
                             )}
                           </div>
-                          <div className="text-xs text-[var(--text-secondary)]">
-                            {char.ability}
+                          <div className="text-xs text-[var(--text-secondary)] mb-2">
+                            {ec.character.ability}
                           </div>
+                          {ec.contribution && (
+                            <div className="text-xs text-[var(--text-secondary)] bg-[var(--bg-secondary)] rounded p-2 mb-1">
+                              <span className="font-medium">贡献：</span>{ec.contribution}
+                            </div>
+                          )}
+                          {ec.collaboration && (
+                            <div className="text-xs text-[var(--text-secondary)] bg-[var(--bg-secondary)] rounded p-2">
+                              <span className="font-medium">协作：</span>{ec.collaboration}
+                            </div>
+                          )}
                         </div>
-                        <Badge color={charLevelColors[char.level] || 'gray'} className="text-xs">
-                          {char.level}
-                        </Badge>
-                        {isAdmin && (
-                          <button
-                            className="text-xs px-2 py-1 rounded bg-[var(--accent-primary)]/20 text-[var(--accent-primary)] hover:bg-[var(--accent-primary)] hover:text-white transition-colors"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openLevelUpModal(char);
-                            }}
-                          >
-                            调整等级
-                          </button>
-                        )}
+                        <div className="flex flex-col gap-1 flex-shrink-0">
+                          <Badge color={charLevelColors[ec.character.level] || 'gray'} className="text-xs">
+                            {ec.character.level}
+                          </Badge>
+                          {isAdmin && (
+                            <>
+                              <button
+                                className="text-xs px-2 py-1 rounded bg-[var(--accent-primary)]/20 text-[var(--accent-primary)] hover:bg-[var(--accent-primary)] hover:text-white transition-colors"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openLevelUpModal(ec.character);
+                                }}
+                              >
+                                调整等级
+                              </button>
+                              <button
+                                className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-500 hover:bg-blue-500 hover:text-white transition-colors"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openRoleModal(ec);
+                                }}
+                              >
+                                编辑分工
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))
                 )}
               </div>
             </div>
+
+            {selectedEvent.disposalConclusion && (
+              <div className="border-t border-[var(--border)] pt-4">
+                <h3 className="font-medium mb-3 flex items-center gap-2">
+                  <span>📋</span> 处置结论
+                </h3>
+                <div className="bg-[var(--bg-tertiary)] rounded-xl p-4">
+                  <pre className="text-sm text-[var(--text-secondary)] whitespace-pre-wrap font-sans">
+                    {selectedEvent.disposalConclusion}
+                  </pre>
+                </div>
+              </div>
+            )}
 
             <div className="border-t border-[var(--border)] pt-4">
               <h3 className="font-medium mb-3 flex items-center gap-2">
@@ -520,20 +637,26 @@ const EventsPage = () => {
             </div>
 
             {isAdmin && (
-              <div className="flex gap-2 pt-4 border-t border-[var(--border)]">
+              <div className="flex flex-wrap gap-2 pt-4 border-t border-[var(--border)]">
                 <Button
                   variant="secondary"
-                  className="flex-1"
                   onClick={() => {
                     setDetailModalOpen(false);
                     openModal(selectedEvent);
                   }}
+                  className="flex-1 min-w-[100px]"
                 >
                   编辑
                 </Button>
                 <Button
+                  className="flex-1 min-w-[120px] bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
+                  onClick={handleAutoUpdateConclusion}
+                >
+                  ✨ 自动生成结论
+                </Button>
+                <Button
                   variant="danger"
-                  className="flex-1"
+                  className="flex-1 min-w-[100px]"
                   onClick={() => {
                     if (confirm('确定要删除这个事件吗？')) {
                       handleDelete(selectedEvent.id);
@@ -630,6 +753,97 @@ const EventsPage = () => {
                 variant="secondary"
                 className="flex-1"
                 onClick={() => setLevelUpModalOpen(false)}
+              >
+                取消
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={roleModalOpen}
+        onClose={() => setRoleModalOpen(false)}
+        title="编辑角色分工"
+      >
+        {editingRoleChar && selectedEvent && (
+          <div className="space-y-4">
+            <div className="bg-[var(--bg-tertiary)] rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-secondary)] flex items-center justify-center text-2xl">
+                  {editingRoleChar.character.avatar || '👤'}
+                </div>
+                <div>
+                  <h3 className="font-bold">{editingRoleChar.character.name}</h3>
+                  <p className="text-sm text-[var(--text-secondary)]">{editingRoleChar.character.ability}</p>
+                </div>
+                <Badge color={charLevelColors[editingRoleChar.character.level] || 'gray'} className="ml-auto">
+                  {editingRoleChar.character.level}
+                </Badge>
+              </div>
+            </div>
+
+            <div className="bg-[var(--bg-tertiary)] rounded-xl p-4">
+              <p className="text-sm text-[var(--text-secondary)] mb-1">关联事件</p>
+              <p className="font-medium">{selectedEvent.title}</p>
+              <div className="flex gap-2 mt-2">
+                <Badge color={typeColors[selectedEvent.type] || 'gray'} className="text-xs">
+                  {selectedEvent.type}
+                </Badge>
+                <Badge color={levelColors[selectedEvent.level] || 'gray'} className="text-xs">
+                  {selectedEvent.level}
+                </Badge>
+              </div>
+            </div>
+
+            <InputField
+              label="角色分工"
+              value={roleForm.role}
+              onChange={(e) => setRoleForm({ ...roleForm, role: e.target.value })}
+              placeholder="例如：主攻手、支援、侦察、指挥等"
+            />
+
+            <SelectField
+              label="任务结果"
+              value={roleForm.missionResult}
+              onChange={(e) => setRoleForm({ ...roleForm, missionResult: e.target.value })}
+              options={[
+                { value: '', label: '未填写' },
+                { value: '成功', label: '成功' },
+                { value: '失败', label: '失败' },
+                { value: '进行中', label: '进行中' },
+                { value: '部分成功', label: '部分成功' },
+              ]}
+            />
+
+            <TextareaField
+              label="主要贡献"
+              value={roleForm.contribution}
+              onChange={(e) => setRoleForm({ ...roleForm, contribution: e.target.value })}
+              placeholder="描述该角色在事件中的主要贡献和成果..."
+              rows={3}
+            />
+
+            <TextareaField
+              label="协作记录"
+              value={roleForm.collaboration}
+              onChange={(e) => setRoleForm({ ...roleForm, collaboration: e.target.value })}
+              placeholder="描述该角色与其他角色的协作情况..."
+              rows={3}
+            />
+
+            <div className="flex gap-4 pt-2">
+              <Button
+                className="flex-1"
+                onClick={handleUpdateRole}
+              >
+                保存分工
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                className="flex-1"
+                onClick={() => setRoleModalOpen(false)}
               >
                 取消
               </Button>
