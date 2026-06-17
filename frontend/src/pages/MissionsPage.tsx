@@ -25,6 +25,11 @@ const MissionsPage = () => {
   });
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('list');
+  const [filters, setFilters] = useState({
+    characterStatus: '',
+    eventLevel: '',
+    priority: '',
+  });
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -177,6 +182,28 @@ const MissionsPage = () => {
     );
   };
 
+  const filteredMissions = missions.filter((mission) => {
+    if (filters.priority && mission.priority !== filters.priority) return false;
+
+    if (filters.characterStatus) {
+      const missionChars = mission.characters?.map((mc) => mc.character) || [];
+      if (!missionChars.some((c) => c.status === filters.characterStatus)) return false;
+    }
+
+    if (filters.eventLevel) {
+      const missionEvent = mission.event || events.find((e) => e.id === mission.eventId);
+      if (!missionEvent || missionEvent.level !== filters.eventLevel) return false;
+    }
+
+    return true;
+  });
+
+  const hasActiveFilters = filters.characterStatus !== '' || filters.eventLevel !== '' || filters.priority !== '';
+
+  const clearFilters = () => {
+    setFilters({ characterStatus: '', eventLevel: '', priority: '' });
+  };
+
   const priorityColors: Record<string, 'red' | 'yellow' | 'blue'> = {
     '高': 'red',
     '中': 'yellow',
@@ -242,7 +269,7 @@ const MissionsPage = () => {
   const getMissionsForDay = (day: number | null) => {
     if (!day) return [];
     const dateStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    return missions.filter((m) => new Date(m.dueDate).toISOString().split('T')[0] === dateStr);
+    return filteredMissions.filter((m) => new Date(m.dueDate).toISOString().split('T')[0] === dateStr);
   };
 
   const prevMonth = () => {
@@ -286,6 +313,59 @@ const MissionsPage = () => {
           {isAdmin && (
             <Button onClick={() => openModal()}>+ 添加任务</Button>
           )}
+        </div>
+      </div>
+
+      <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl p-4 mb-6">
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+            <span>🔍</span>
+            <span className="font-medium">筛选</span>
+          </div>
+          <select
+            value={filters.characterStatus}
+            onChange={(e) => setFilters({ ...filters, characterStatus: e.target.value })}
+            className="px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-white text-sm focus:outline-none focus:border-[var(--accent-primary)] transition-colors"
+          >
+            <option value="">全部角色状态</option>
+            <option value="活跃">活跃</option>
+            <option value="待命">待命</option>
+            <option value="离线">离线</option>
+            <option value="重伤">重伤</option>
+          </select>
+          <select
+            value={filters.eventLevel}
+            onChange={(e) => setFilters({ ...filters, eventLevel: e.target.value })}
+            className="px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-white text-sm focus:outline-none focus:border-[var(--accent-primary)] transition-colors"
+          >
+            <option value="">全部事件等级</option>
+            <option value="S级">S级</option>
+            <option value="A级">A级</option>
+            <option value="B级">B级</option>
+            <option value="C级">C级</option>
+            <option value="D级">D级</option>
+          </select>
+          <select
+            value={filters.priority}
+            onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
+            className="px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-white text-sm focus:outline-none focus:border-[var(--accent-primary)] transition-colors"
+          >
+            <option value="">全部优先级</option>
+            <option value="高">高优先级</option>
+            <option value="中">中优先级</option>
+            <option value="低">低优先级</option>
+          </select>
+          {hasActiveFilters && (
+            <button
+              onClick={clearFilters}
+              className="text-sm text-[var(--accent-primary)] hover:underline whitespace-nowrap"
+            >
+              清除筛选
+            </button>
+          )}
+          <div className="ml-auto text-sm text-[var(--text-secondary)]">
+            共 {filteredMissions.length} / {missions.length} 条任务
+          </div>
         </div>
       </div>
 
@@ -357,7 +437,21 @@ const MissionsPage = () => {
       )}
 
       <div className="space-y-4">
-        {missions.map((mission) => (
+        {filteredMissions.length === 0 ? (
+          <div className="text-center py-16 text-[var(--text-secondary)]">
+            <p className="text-4xl mb-4">🔍</p>
+            <p>没有符合条件的任务</p>
+            {hasActiveFilters && (
+              <button
+                onClick={clearFilters}
+                className="mt-3 text-[var(--accent-primary)] hover:underline text-sm"
+              >
+                清除筛选条件
+              </button>
+            )}
+          </div>
+        ) : (
+          filteredMissions.map((mission) => (
           <div
             key={mission.id}
             className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl p-6 hover:border-[var(--accent-primary)] transition-colors cursor-pointer"
@@ -391,7 +485,8 @@ const MissionsPage = () => {
               </div>
             </div>
           </div>
-        ))}
+        ))
+        )}
       </div>
 
       <Modal
