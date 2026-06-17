@@ -5,6 +5,7 @@ import authRoutes from './routes/auth';
 import characterRoutes from './routes/characters';
 import eventRoutes from './routes/events';
 import missionRoutes from './routes/missions';
+import missionExtensionRoutes from './routes/missionExtensions';
 
 dotenv.config();
 
@@ -44,6 +45,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/characters', characterRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/missions', missionRoutes);
+app.use('/api/mission-extensions', missionExtensionRoutes);
 
 app.listen(PORT, () => {
   console.log(`🚀 服务器运行在 http://localhost:${PORT}`);

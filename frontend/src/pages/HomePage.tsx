@@ -1,29 +1,50 @@
 import { useEffect, useState } from 'react';
-import { worldviewAPI, characterAPI, eventAPI, missionAPI } from '../api';
-import { Worldview, Character, Event, Mission } from '../types';
+import { useNavigate } from 'react-router-dom';
+import { worldviewAPI, characterAPI, eventAPI, missionAPI, missionExtensionAPI } from '../api';
+import { Worldview, Character, Event, Mission, MissionExtensionRequest } from '../types';
 import Badge from '../components/Badge';
+import { useAuth } from '../hooks/useAuth';
 
 const HomePage = () => {
   const [worldview, setWorldview] = useState<Worldview | null>(null);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [missions, setMissions] = useState<Mission[]>([]);
+  const [pendingExtensionCount, setPendingExtensionCount] = useState(0);
+  const [pendingExtensions, setPendingExtensions] = useState<MissionExtensionRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const { isAdmin } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
-    Promise.all([
-      worldviewAPI.get(),
-      characterAPI.getAll(),
-      eventAPI.getAll(),
-      missionAPI.getAll(),
-    ]).then(([w, c, e, m]) => {
+    const loadData = async () => {
+      const [w, c, e, m] = await Promise.all([
+        worldviewAPI.get(),
+        characterAPI.getAll(),
+        eventAPI.getAll(),
+        missionAPI.getAll(),
+      ]);
       setWorldview(w);
       setCharacters(c);
       setEvents(e);
       setMissions(m);
+
+      if (isAdmin) {
+        try {
+          const [countData, pendingData] = await Promise.all([
+            missionExtensionAPI.getPendingCount(),
+            missionExtensionAPI.getPending(),
+          ]);
+          setPendingExtensionCount(countData.count);
+          setPendingExtensions(pendingData);
+        } catch (err) {
+          console.error('加载待审批数据失败', err);
+        }
+      }
       setLoading(false);
-    });
-  }, []);
+    };
+    loadData();
+  }, [isAdmin]);
 
   if (loading) {
     return (
@@ -99,6 +120,17 @@ const HomePage = () => {
   });
 
   const todoWarnings = [
+    ...pendingExtensions.map((req) => ({
+      type: 'extension' as const,
+      id: `extension-${req.id}`,
+      title: req.mission?.title || '未知任务',
+      priority: req.mission?.priority || null,
+      level: null,
+      status: req.status,
+      dueDate: req.requestedDueDate,
+      message: `${req.applicant.name} 申请延期至 ${new Date(req.requestedDueDate).toLocaleDateString('zh-CN')}`,
+      extensionId: req.id,
+    })),
     ...urgentMissions.map((m) => ({
       type: 'mission' as const,
       id: `mission-${m.id}`,
@@ -130,8 +162,10 @@ const HomePage = () => {
       message: '活跃角色暂无任务分配',
     })),
   ].sort((a, b) => {
+    const typeOrder: Record<string, number> = { extension: 0, event: 1, mission: 2, character: 3 };
     const levelOrder: Record<string, number> = { S级: 0, 'A级': 1, 'B级': 2, 'C级': 3, 'D级': 4 };
     const priorityOrder: Record<string, number> = { 高: 0, 中: 1, 低: 2 };
+    if (a.type && b.type && typeOrder[a.type] !== typeOrder[b.type]) return typeOrder[a.type] - typeOrder[b.type];
     if (a.level && b.level) return levelOrder[a.level] - levelOrder[b.level];
     if (a.priority && b.priority) return priorityOrder[a.priority] - priorityOrder[b.priority];
     return 0;
@@ -142,6 +176,13 @@ const HomePage = () => {
     { label: '事件记录', value: events.length, icon: '📋', color: 'blue' as const },
     { label: '进行中任务', value: missions.filter(m => m.status === '进行中').length, icon: '📅', color: 'yellow' as const },
     { label: '活跃角色', value: characters.filter(c => c.status === '活跃').length, icon: '⚡', color: 'green' as const },
+    ...(isAdmin && pendingExtensionCount > 0 ? [{
+      label: '待审批延期',
+      value: pendingExtensionCount,
+      icon: '⏰',
+      color: 'red' as const,
+      onClick: () => navigate('/missions'),
+    }] : []),
   ];
 
   const disposalStats = [
@@ -174,7 +215,10 @@ const HomePage = () => {
         {stats.map((stat) => (
           <div
             key={stat.label}
-            className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl p-6 hover:border-[var(--accent-primary)] transition-colors"
+            className={`bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl p-6 hover:border-[var(--accent-primary)] transition-colors ${
+              (stat as any).onClick ? 'cursor-pointer' : ''
+            }`}
+            onClick={() => (stat as any).onClick?.()}
           >
             <div className="flex items-center justify-between mb-4">
               <span className="text-4xl">{stat.icon}</span>
@@ -327,24 +371,43 @@ const HomePage = () => {
           </h2>
           <div className="space-y-3 max-h-96 overflow-y-auto">
             {todoWarnings.map((item) => {
-              const typeIcon = item.type === 'mission' ? '📅' : item.type === 'event' ? '📋' : '👤';
-              const typeLabel = item.type === 'mission' ? '任务' : item.type === 'event' ? '事件' : '角色';
+              const typeIcon = item.type === 'mission' ? '📅' : item.type === 'event' ? '📋' : item.type === 'extension' ? '⏰' : '👤';
+              const typeLabel = item.type === 'mission' ? '任务' : item.type === 'event' ? '事件' : item.type === 'extension' ? '延期审批' : '角色';
               const urgencyColor =
-                item.level === 'S级' || item.priority === '高'
+                item.type === 'extension'
+                  ? 'var(--danger)'
+                  : item.level === 'S级' || item.priority === '高'
                   ? 'var(--danger)'
                   : item.level === 'A级' || item.priority === '中'
                   ? 'var(--warning)'
                   : 'var(--accent-primary)';
+              const badgeColor = item.type === 'mission' ? 'yellow' : item.type === 'event' ? 'blue' : item.type === 'extension' ? 'red' : 'purple';
               return (
                 <div
                   key={item.id}
-                  className="p-4 bg-[var(--bg-tertiary)] rounded-xl hover:bg-[var(--border)] transition-colors border-l-4"
+                  className="p-4 bg-[var(--bg-tertiary)] rounded-xl hover:bg-[var(--border)] transition-colors border-l-4 cursor-pointer"
                   style={{ borderLeftColor: urgencyColor }}
+                  onClick={() => {
+                    if (item.type === 'mission' || item.type === 'extension') {
+                      const missionId = item.type === 'extension'
+                        ? pendingExtensions.find(e => e.id === (item as any).extensionId)?.missionId
+                        : parseInt(item.id.replace('mission-', ''));
+                      if (missionId) {
+                        navigate(`/missions?missionId=${missionId}`);
+                      }
+                    } else if (item.type === 'event') {
+                      const eventId = parseInt(item.id.replace('event-', ''));
+                      navigate(`/events?eventId=${eventId}`);
+                    } else if (item.type === 'character') {
+                      const charId = parseInt(item.id.replace('character-', ''));
+                      navigate(`/characters?characterId=${charId}`);
+                    }
+                  }}
                 >
                   <div className="flex items-start justify-between gap-3 mb-2">
                     <div className="flex items-center gap-2">
                       <span className="text-lg">{typeIcon}</span>
-                      <Badge color={item.type === 'mission' ? 'yellow' : item.type === 'event' ? 'blue' : 'purple'}>
+                      <Badge color={badgeColor}>
                         {typeLabel}
                       </Badge>
                       {item.level && (
@@ -359,7 +422,8 @@ const HomePage = () => {
                     {item.status && (
                       <Badge color={
                         item.status === '进行中' || item.status === '处置中' ? 'green' :
-                        item.status === '已完成' ? 'purple' : 'gray'
+                        item.status === '已完成' ? 'purple' :
+                        item.status === '待审批' ? 'yellow' : 'gray'
                       }>
                         {item.status}
                       </Badge>
@@ -370,7 +434,7 @@ const HomePage = () => {
                     <span className="text-[var(--text-secondary)]">{item.message}</span>
                     {item.dueDate && (
                       <span className="text-[var(--text-secondary)]">
-                        {item.type === 'mission' ? '截止' : '发生'}: {new Date(item.dueDate).toLocaleDateString('zh-CN')}
+                        {item.type === 'mission' ? '截止' : item.type === 'extension' ? '申请至' : '发生'}: {new Date(item.dueDate).toLocaleDateString('zh-CN')}
                       </span>
                     )}
                   </div>

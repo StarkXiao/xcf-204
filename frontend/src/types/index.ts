@@ -51,6 +51,25 @@ export interface Mission {
   createdAt: string;
   updatedAt: string;
   characters?: MissionCharacter[];
+  extensionRequests?: MissionExtensionRequest[];
+}
+
+export interface MissionExtensionRequest {
+  id: number;
+  missionId: number;
+  mission?: Mission;
+  applicantId: number;
+  applicant: Character;
+  approverId?: number;
+  approver?: Character;
+  originalDueDate: string;
+  requestedDueDate: string;
+  reason: string;
+  status: string;
+  approvalComment?: string;
+  approvedAt?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface EventCharacter {

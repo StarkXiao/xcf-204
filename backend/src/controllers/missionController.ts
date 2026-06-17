@@ -25,6 +25,10 @@ export const getMissions = async (req: Request, res: Response) => {
       include: {
         characters: { include: { character: true } },
         event: true,
+        extensionRequests: {
+          include: { applicant: true, approver: true },
+          orderBy: { createdAt: 'desc' },
+        },
       },
       orderBy: { dueDate: 'asc' },
     });
@@ -42,6 +46,10 @@ export const getMissions = async (req: Request, res: Response) => {
       include: {
         characters: { include: { character: true } },
         event: true,
+        extensionRequests: {
+          include: { applicant: true, approver: true },
+          orderBy: { createdAt: 'desc' },
+        },
       },
       orderBy: { dueDate: 'asc' },
     });
@@ -60,6 +68,10 @@ export const getMission = async (req: Request, res: Response) => {
     include: {
       characters: { include: { character: true } },
       event: true,
+      extensionRequests: {
+        include: { applicant: true, approver: true },
+        orderBy: { createdAt: 'desc' },
+      },
     },
   });
   if (!mission) {
@@ -96,6 +108,7 @@ export const createMission = async (req: Request, res: Response) => {
       include: { 
         characters: { include: { character: true } },
         event: true,
+        extensionRequests: true,
       },
     });
 
@@ -118,6 +131,10 @@ export const createMission = async (req: Request, res: Response) => {
       include: { 
         characters: { include: { character: true } },
         event: true,
+        extensionRequests: {
+          include: { applicant: true, approver: true },
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
 
@@ -207,6 +224,7 @@ export const updateMission = async (req: Request, res: Response) => {
       include: { 
         characters: { include: { character: true } },
         event: true,
+        extensionRequests: true,
       },
     });
 
@@ -231,6 +249,10 @@ export const updateMission = async (req: Request, res: Response) => {
       include: { 
         characters: { include: { character: true } },
         event: true,
+        extensionRequests: {
+          include: { applicant: true, approver: true },
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
 

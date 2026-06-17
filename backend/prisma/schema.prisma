@@ -18,20 +18,22 @@ model User {
 }
 
 model Character {
-  id             Int              @id @default(autoincrement())
-  name           String
-  codeName       String?
-  ability        String
-  level          String
-  status         String
-  description    String?
-  avatar         String?
-  user           User?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  events         EventCharacter[]
-  missions       MissionCharacter[]
-  levelHistories LevelHistory[]
+  id                   Int                     @id @default(autoincrement())
+  name                 String
+  codeName             String?
+  ability              String
+  level                String
+  status               String
+  description          String?
+  avatar               String?
+  user                 User?
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  events               EventCharacter[]
+  missions             MissionCharacter[]
+  levelHistories       LevelHistory[]
+  extensionApplications MissionExtensionRequest[] @relation("ExtensionApplicant")
+  extensionApprovals   MissionExtensionRequest[] @relation("ExtensionApprover")
 }
 
 model Event {
@@ -54,18 +56,19 @@ model Event {
 }
 
 model Mission {
-  id             Int              @id @default(autoincrement())
-  title          String
-  description    String
-  priority       String
-  status         String
-  dueDate        DateTime
-  eventId        Int?
-  event          Event?           @relation(fields: [eventId], references: [id], onDelete: SetNull)
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  characters     MissionCharacter[]
-  levelHistories LevelHistory[]
+  id                    Int                     @id @default(autoincrement())
+  title                 String
+  description           String
+  priority              String
+  status                String
+  dueDate               DateTime
+  eventId               Int?
+  event                 Event?                  @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  characters            MissionCharacter[]
+  levelHistories        LevelHistory[]
+  extensionRequests     MissionExtensionRequest[]
 }
 
 model EventCharacter {
@@ -104,4 +107,22 @@ model LevelHistory {
   missionId   Int?
   mission     Mission? @relation(fields: [missionId], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now())
+}
+
+model MissionExtensionRequest {
+  id              Int       @id @default(autoincrement())
+  missionId       Int
+  mission         Mission   @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  applicantId     Int
+  applicant       Character @relation("ExtensionApplicant", fields: [applicantId], references: [id], onDelete: Cascade)
+  approverId      Int?
+  approver        Character? @relation("ExtensionApprover", fields: [approverId], references: [id], onDelete: SetNull)
+  originalDueDate DateTime
+  requestedDueDate DateTime
+  reason          String
+  status          String    @default("待审批")
+  approvalComment String?
+  approvedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }

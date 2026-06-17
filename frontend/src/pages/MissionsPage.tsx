@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { missionAPI, characterAPI, eventAPI } from '../api';
-import { Mission, Character, Event } from '../types';
+import { missionAPI, characterAPI, eventAPI, missionExtensionAPI } from '../api';
+import { Mission, Character, Event, MissionExtensionRequest } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import Modal from '../components/Modal';
 import { Button, InputField, SelectField, TextareaField } from '../components/FormField';
@@ -15,6 +15,9 @@ const MissionsPage = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [levelUpModalOpen, setLevelUpModalOpen] = useState(false);
+  const [extensionRequestModalOpen, setExtensionRequestModalOpen] = useState(false);
+  const [approveExtensionModalOpen, setApproveExtensionModalOpen] = useState(false);
+  const [selectedExtensionRequest, setSelectedExtensionRequest] = useState<MissionExtensionRequest | null>(null);
   const [selectedMission, setSelectedMission] = useState<Mission | null>(null);
   const [editingMission, setEditingMission] = useState<Mission | null>(null);
   const [levelUpChar, setLevelUpChar] = useState<Character | null>(null);
@@ -22,6 +25,14 @@ const MissionsPage = () => {
     newLevel: '',
     reason: '',
     description: '',
+  });
+  const [extensionRequestForm, setExtensionRequestForm] = useState({
+    requestedDueDate: '',
+    reason: '',
+  });
+  const [approveForm, setApproveForm] = useState({
+    status: '已批准' as '已批准' | '已拒绝',
+    approvalComment: '',
   });
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('list');
@@ -163,6 +174,69 @@ const MissionsPage = () => {
     if (confirm('确定要删除这个任务吗？')) {
       await missionAPI.delete(id);
       loadData();
+    }
+  };
+
+  const openExtensionRequestModal = () => {
+    if (!selectedMission) return;
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    setExtensionRequestForm({
+      requestedDueDate: tomorrow.toISOString().split('T')[0],
+      reason: '',
+    });
+    setExtensionRequestModalOpen(true);
+  };
+
+  const handleSubmitExtensionRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedMission) return;
+    try {
+      await missionExtensionAPI.create({
+        missionId: selectedMission.id,
+        requestedDueDate: extensionRequestForm.requestedDueDate,
+        reason: extensionRequestForm.reason,
+      });
+      setExtensionRequestModalOpen(false);
+      loadData();
+      alert('延期申请已提交，等待审批');
+    } catch (err: any) {
+      alert(err.response?.data?.message || '提交申请失败');
+    }
+  };
+
+  const openApproveExtensionModal = (request: MissionExtensionRequest) => {
+    setSelectedExtensionRequest(request);
+    setApproveForm({
+      status: '已批准',
+      approvalComment: '',
+    });
+    setApproveExtensionModalOpen(true);
+  };
+
+  const handleApproveExtension = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedExtensionRequest) return;
+    try {
+      const result = await missionExtensionAPI.approve(selectedExtensionRequest.id, {
+        status: approveForm.status,
+        approvalComment: approveForm.approvalComment,
+      });
+      setApproveExtensionModalOpen(false);
+      setSelectedExtensionRequest(null);
+      loadData();
+      alert(approveForm.status === '已批准' ? '延期申请已批准' : '延期申请已拒绝');
+    } catch (err: any) {
+      alert(err.response?.data?.message || '审批失败');
+    }
+  };
+
+  const getExtensionStatusColor = (status: string): 'gray' | 'yellow' | 'green' | 'red' => {
+    switch (status) {
+      case '待审批': return 'yellow';
+      case '已批准': return 'green';
+      case '已拒绝': return 'red';
+      default: return 'gray';
     }
   };
 
@@ -716,32 +790,95 @@ const MissionsPage = () => {
               </div>
             </div>
 
-            {isAdmin && (
-              <div className="flex gap-2 pt-4 border-t border-[var(--border)]">
-                <Button
-                  variant="secondary"
-                  className="flex-1"
-                  onClick={() => {
-                    setDetailModalOpen(false);
-                    openModal(selectedMission);
-                  }}
-                >
-                  编辑
-                </Button>
-                <Button
-                  variant="danger"
-                  className="flex-1"
-                  onClick={() => {
-                    if (confirm('确定要删除这个任务吗？')) {
-                      handleDelete(selectedMission.id);
-                      setDetailModalOpen(false);
-                    }
-                  }}
-                >
-                  删除
-                </Button>
+            {selectedMission?.extensionRequests && selectedMission.extensionRequests.length > 0 && (
+              <div className="border-t border-[var(--border)] pt-4">
+                <h3 className="font-medium mb-3 flex items-center gap-2">
+                  <span>⏰</span> 延期申请记录 ({selectedMission.extensionRequests.length})
+                </h3>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {selectedMission.extensionRequests.map((req) => (
+                    <div key={req.id} className="bg-[var(--bg-tertiary)] rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm">{req.applicant.avatar} {req.applicant.name}</span>
+                          <Badge color={getExtensionStatusColor(req.status)} className="text-xs">
+                            {req.status}
+                          </Badge>
+                        </div>
+                        <span className="text-xs text-[var(--text-secondary)]">
+                          {new Date(req.createdAt).toLocaleString('zh-CN')}
+                        </span>
+                      </div>
+                      <div className="text-sm text-[var(--text-secondary)] mb-1">
+                        原截止: {new Date(req.originalDueDate).toLocaleDateString('zh-CN')} → 
+                        申请延期至: {new Date(req.requestedDueDate).toLocaleDateString('zh-CN')}
+                      </div>
+                      <div className="text-sm mb-2">
+                        <span className="text-[var(--text-secondary)]">申请理由: </span>
+                        {req.reason}
+                      </div>
+                      {req.approver && (
+                        <div className="text-sm text-[var(--text-secondary)] border-t border-[var(--border)] pt-2 mt-2">
+                          <div>审批人: {req.approver.avatar} {req.approver.name}</div>
+                          {req.approvalComment && <div>审批意见: {req.approvalComment}</div>}
+                          {req.approvedAt && (
+                            <div className="text-xs">审批时间: {new Date(req.approvedAt).toLocaleString('zh-CN')}</div>
+                          )}
+                        </div>
+                      )}
+                      {isAdmin && req.status === '待审批' && (
+                        <button
+                          className="mt-2 text-xs px-3 py-1 rounded bg-[var(--accent-primary)] text-white hover:bg-[var(--accent-secondary)] transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openApproveExtensionModal(req);
+                          }}
+                        >
+                          审批
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
+
+            <div className="flex flex-wrap gap-2 pt-4 border-t border-[var(--border)]">
+              {selectedMission && !isAdmin && selectedMission.status !== '已完成' && selectedMission.status !== '已取消' && (
+                <Button
+                  variant="secondary"
+                  onClick={openExtensionRequestModal}
+                >
+                  📅 申请延期
+                </Button>
+              )}
+              {isAdmin && (
+                <>
+                  <Button
+                    variant="secondary"
+                    className="flex-1"
+                    onClick={() => {
+                      setDetailModalOpen(false);
+                      openModal(selectedMission);
+                    }}
+                  >
+                    编辑
+                  </Button>
+                  <Button
+                    variant="danger"
+                    className="flex-1"
+                    onClick={() => {
+                      if (confirm('确定要删除这个任务吗？')) {
+                        handleDelete(selectedMission!.id);
+                        setDetailModalOpen(false);
+                      }
+                    }}
+                  >
+                    删除
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         )}
       </Modal>
@@ -832,6 +969,137 @@ const MissionsPage = () => {
               </Button>
             </div>
           </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={extensionRequestModalOpen}
+        onClose={() => setExtensionRequestModalOpen(false)}
+        title="申请任务延期"
+      >
+        {selectedMission && (
+          <form onSubmit={handleSubmitExtensionRequest} className="space-y-4">
+            <div className="bg-[var(--bg-tertiary)] rounded-xl p-4">
+              <p className="text-sm text-[var(--text-secondary)] mb-1">关联任务</p>
+              <p className="font-medium mb-2">{selectedMission.title}</p>
+              <div className="flex flex-wrap gap-2">
+                <Badge color={priorityColors[selectedMission.priority] || 'gray'} className="text-xs">
+                  {selectedMission.priority}优先级
+                </Badge>
+                <Badge color={statusColors[selectedMission.status] || 'gray'} className="text-xs">
+                  {selectedMission.status}
+                </Badge>
+              </div>
+              <div className="mt-3 text-sm">
+                <span className="text-[var(--text-secondary)]">当前截止日期: </span>
+                <span className="font-medium">{new Date(selectedMission.dueDate).toLocaleDateString('zh-CN')}</span>
+              </div>
+            </div>
+
+            <InputField
+              label="申请延期至"
+              type="date"
+              value={extensionRequestForm.requestedDueDate}
+              onChange={(e) => setExtensionRequestForm({ ...extensionRequestForm, requestedDueDate: e.target.value })}
+              required
+            />
+
+            <TextareaField
+              label="延期理由"
+              value={extensionRequestForm.reason}
+              onChange={(e) => setExtensionRequestForm({ ...extensionRequestForm, reason: e.target.value })}
+              placeholder="请详细说明需要延期的原因..."
+              required
+            />
+
+            <div className="flex gap-4 pt-2">
+              <Button type="submit" className="flex-1">
+                提交申请
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                className="flex-1"
+                onClick={() => setExtensionRequestModalOpen(false)}
+              >
+                取消
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={approveExtensionModalOpen}
+        onClose={() => setApproveExtensionModalOpen(false)}
+        title="审批延期申请"
+      >
+        {selectedExtensionRequest && (
+          <form onSubmit={handleApproveExtension} className="space-y-4">
+            <div className="bg-[var(--bg-tertiary)] rounded-xl p-4 space-y-3">
+              <div>
+                <p className="text-sm text-[var(--text-secondary)] mb-1">任务</p>
+                <p className="font-medium">{selectedExtensionRequest.mission?.title || '未知任务'}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-secondary)] flex items-center justify-center text-lg">
+                  {selectedExtensionRequest.applicant.avatar || '👤'}
+                </div>
+                <div>
+                  <p className="font-medium">{selectedExtensionRequest.applicant.name}</p>
+                  <p className="text-xs text-[var(--text-secondary)]">申请人</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-[var(--text-secondary)]">原截止日期</p>
+                  <p className="font-medium">{new Date(selectedExtensionRequest.originalDueDate).toLocaleDateString('zh-CN')}</p>
+                </div>
+                <div>
+                  <p className="text-[var(--text-secondary)]">申请延期至</p>
+                  <p className="font-medium text-[var(--accent-primary)]">{new Date(selectedExtensionRequest.requestedDueDate).toLocaleDateString('zh-CN')}</p>
+                </div>
+              </div>
+              <div>
+                <p className="text-sm text-[var(--text-secondary)] mb-1">申请理由</p>
+                <p className="text-sm bg-[var(--bg-primary)] rounded-lg p-3">{selectedExtensionRequest.reason}</p>
+              </div>
+            </div>
+
+            <SelectField
+              label="审批结果"
+              value={approveForm.status}
+              onChange={(e) => setApproveForm({ ...approveForm, status: e.target.value as '已批准' | '已拒绝' })}
+              options={[
+                { value: '已批准', label: '批准延期' },
+                { value: '已拒绝', label: '拒绝申请' },
+              ]}
+            />
+
+            <TextareaField
+              label="审批意见（可选）"
+              value={approveForm.approvalComment}
+              onChange={(e) => setApproveForm({ ...approveForm, approvalComment: e.target.value })}
+              placeholder="请输入审批意见..."
+            />
+
+            <div className="flex gap-4 pt-2">
+              <Button
+                type="submit"
+                className="flex-1"
+              >
+                确认{approveForm.status === '已批准' ? '批准' : '拒绝'}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                className="flex-1"
+                onClick={() => setApproveExtensionModalOpen(false)}
+              >
+                取消
+              </Button>
+            </div>
+          </form>
         )}
       </Modal>
     </div>
