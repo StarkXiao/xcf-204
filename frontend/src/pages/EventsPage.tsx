@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { eventAPI, characterAPI, missionAPI } from '../api';
-import { Event, Character, Mission, EventCharacter } from '../types';
+import { Event, Character, Mission, EventCharacter, DuplicateEventResult } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import Modal from '../components/Modal';
 import { Button, InputField, SelectField, TextareaField } from '../components/FormField';
@@ -50,6 +50,11 @@ const EventsPage = () => {
       collaboration?: string;
     }[],
   });
+  const [duplicateResults, setDuplicateResults] = useState<DuplicateEventResult[]>([]);
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false);
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+  const [confirmedNoDuplicate, setConfirmedNoDuplicate] = useState(false);
+  const duplicateCheckTimeoutRef = useRef<number | null>(null);
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -62,6 +67,50 @@ const EventsPage = () => {
       setLoading(false);
     });
   };
+
+  const checkForDuplicates = useCallback(async (data: { title: string; date: string; location: string }, excludeId?: number) => {
+    if (!data.title.trim() || !data.date || !data.location.trim()) {
+      setDuplicateResults([]);
+      return;
+    }
+
+    if (duplicateCheckTimeoutRef.current) {
+      clearTimeout(duplicateCheckTimeoutRef.current);
+    }
+
+    duplicateCheckTimeoutRef.current = setTimeout(async () => {
+      setCheckingDuplicates(true);
+      try {
+        const response = await eventAPI.checkDuplicates({
+          ...data,
+          excludeId,
+          threshold: 0.6,
+        });
+        setDuplicateResults(response.duplicates);
+      } catch (err) {
+        console.error('检查重复事件失败:', err);
+        setDuplicateResults([]);
+      } finally {
+        setCheckingDuplicates(false);
+      }
+    }, 500);
+  }, []);
+
+  const handleFormFieldChange = useCallback((field: string, value: string) => {
+    const newFormData = { ...formData, [field]: value };
+    setFormData(newFormData);
+    setConfirmedNoDuplicate(false);
+    if (field === 'title' || field === 'date' || field === 'location') {
+      checkForDuplicates(
+        {
+          title: newFormData.title,
+          date: newFormData.date,
+          location: newFormData.location,
+        },
+        editingEvent?.id
+      );
+    }
+  }, [formData, editingEvent, checkForDuplicates]);
 
   useEffect(() => {
     loadData();
@@ -157,13 +206,16 @@ const EventsPage = () => {
   };
 
   const openModal = (event?: Event) => {
+    setDuplicateResults([]);
+    setConfirmedNoDuplicate(false);
     if (event) {
       setEditingEvent(event);
+      const dateStr = new Date(event.date).toISOString().split('T')[0];
       setFormData({
         title: event.title,
         type: event.type,
         level: event.level,
-        date: new Date(event.date).toISOString().split('T')[0],
+        date: dateStr,
         location: event.location,
         description: event.description,
         result: event.result || '',
@@ -202,8 +254,7 @@ const EventsPage = () => {
     setDetailModalOpen(true);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitEvent = async () => {
     try {
       if (editingEvent) {
         await eventAPI.update(editingEvent.id, formData);
@@ -211,10 +262,20 @@ const EventsPage = () => {
         await eventAPI.create(formData);
       }
       setModalOpen(false);
+      setDuplicateModalOpen(false);
       loadData();
     } catch (err: any) {
       alert(err.response?.data?.message || '操作失败');
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (duplicateResults.length > 0 && !confirmedNoDuplicate) {
+      setDuplicateModalOpen(true);
+      return;
+    }
+    await submitEvent();
   };
 
   const handleDelete = async (id: number) => {
@@ -357,9 +418,40 @@ const EventsPage = () => {
           <InputField
             label="事件标题"
             value={formData.title}
-            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+            onChange={(e) => handleFormFieldChange('title', e.target.value)}
             required
           />
+          {checkingDuplicates && (
+            <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg text-sm text-blue-500">
+              <span className="animate-pulse">🔍 正在检查重复事件...</span>
+            </div>
+          )}
+          {!checkingDuplicates && duplicateResults.length > 0 && (
+            <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+              <div className="text-sm text-yellow-600 font-medium mb-2">
+                ⚠️ 检测到 {duplicateResults.length} 个可能重复的事件
+              </div>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {duplicateResults.slice(0, 3).map((dup, idx) => (
+                  <div key={idx} className="text-xs bg-[var(--bg-tertiary)] p-2 rounded">
+                    <div className="font-medium text-[var(--text-primary)]">{dup.event.title}</div>
+                    <div className="text-[var(--text-secondary)]">
+                      📅 {new Date(dup.event.date).toLocaleDateString('zh-CN')} | 📍 {dup.event.location}
+                    </div>
+                    <div className="flex gap-2 mt-1">
+                      <span className="text-yellow-500">相似度: {(dup.similarity.overall * 100).toFixed(0)}%</span>
+                      {dup.matchReasons.map((reason, ridx) => (
+                        <span key={ridx} className="text-[var(--text-secondary)]">{reason}</span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                {duplicateResults.length > 3 && (
+                  <div className="text-xs text-[var(--text-secondary)]">还有 {duplicateResults.length - 3} 个相似事件...</div>
+                )}
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-4">
             <SelectField
               label="事件类型"
@@ -391,13 +483,13 @@ const EventsPage = () => {
               label="日期"
               type="date"
               value={formData.date}
-              onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+              onChange={(e) => handleFormFieldChange('date', e.target.value)}
               required
             />
             <InputField
               label="地点"
               value={formData.location}
-              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+              onChange={(e) => handleFormFieldChange('location', e.target.value)}
               required
             />
           </div>
@@ -947,6 +1039,104 @@ const EventsPage = () => {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={duplicateModalOpen}
+        onClose={() => setDuplicateModalOpen(false)}
+        title="⚠️ 检测到重复事件"
+      >
+        <div className="space-y-4">
+          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
+            <p className="text-yellow-600 font-medium mb-2">
+              系统检测到以下事件与您正在录入的事件高度相似：
+            </p>
+            <div className="space-y-3 max-h-60 overflow-y-auto">
+              {duplicateResults.map((dup, idx) => (
+                <div key={idx} className="bg-[var(--bg-tertiary)] p-3 rounded-lg">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1">
+                      <h4 className="font-medium text-[var(--text-primary)]">{dup.event.title}</h4>
+                      <div className="text-sm text-[var(--text-secondary)] mt-1">
+                        <span>📅 {new Date(dup.event.date).toLocaleDateString('zh-CN')}</span>
+                        <span className="mx-2">|</span>
+                        <span>📍 {dup.event.location}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        <Badge color="yellow" className="text-xs">
+                          相似度 {(dup.similarity.overall * 100).toFixed(0)}%
+                        </Badge>
+                        {dup.matchReasons.map((reason, ridx) => (
+                          <span key={ridx} className="text-xs text-[var(--text-secondary)] bg-[var(--bg-secondary)] px-2 py-1 rounded">
+                            {reason}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <Badge color={typeColors[dup.event.type] || 'gray'} className="text-xs">
+                        {dup.event.type}
+                      </Badge>
+                      <Badge color={levelColors[dup.event.level] || 'gray'} className="text-xs">
+                        {dup.event.level}
+                      </Badge>
+                    </div>
+                  </div>
+                  {dup.event.description && (
+                    <p className="text-xs text-[var(--text-secondary)] mt-2 line-clamp-2">
+                      {dup.event.description}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-[var(--bg-tertiary)] rounded-xl p-4">
+            <p className="text-sm text-[var(--text-secondary)] mb-3">
+              💡 <strong>建议操作：</strong>
+            </p>
+            <ul className="text-sm text-[var(--text-secondary)] space-y-1 list-disc list-inside">
+              <li>请仔细核对上述事件是否确为同一事件</li>
+              <li>如果是重复事件，请取消并查看已有事件</li>
+              <li>如果确实是不同事件，可以继续创建</li>
+            </ul>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <Button
+              variant="secondary"
+              className="flex-1"
+              onClick={() => setDuplicateModalOpen(false)}
+            >
+              返回修改
+            </Button>
+            <Button
+              variant="secondary"
+              className="flex-1"
+              onClick={() => {
+                setDuplicateModalOpen(false);
+                if (duplicateResults.length > 0) {
+                  const firstDup = duplicateResults[0];
+                  setSelectedEvent(firstDup.event);
+                  setDetailModalOpen(true);
+                  setModalOpen(false);
+                }
+              }}
+            >
+              查看已有事件
+            </Button>
+            <Button
+              className="flex-1 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600"
+              onClick={() => {
+                setConfirmedNoDuplicate(true);
+                submitEvent();
+              }}
+            >
+              确认创建新事件
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

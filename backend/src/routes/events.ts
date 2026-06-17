@@ -7,6 +7,7 @@ import {
   deleteEvent,
   updateEventCharacterRole,
   autoUpdateEventConclusion,
+  checkDuplicateEvents,
 } from '../controllers/eventController';
 import { authenticate, requireAdmin } from '../middleware/auth';
 
@@ -19,5 +20,6 @@ router.put('/:id', authenticate, requireAdmin, updateEvent);
 router.delete('/:id', authenticate, requireAdmin, deleteEvent);
 router.put('/:eventId/characters/:characterId/role', authenticate, requireAdmin, updateEventCharacterRole);
 router.post('/:id/auto-update-conclusion', authenticate, requireAdmin, autoUpdateEventConclusion);
+router.post('/check-duplicates', authenticate, requireAdmin, checkDuplicateEvents);
 
 export default router;

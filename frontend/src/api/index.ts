@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Character, Event, Mission, LoginResponse, Worldview, LevelHistory, EventCharacter, MissionExtensionRequest } from '../types';
+import { Character, Event, Mission, LoginResponse, Worldview, LevelHistory, EventCharacter, MissionExtensionRequest, DuplicateCheckResponse } from '../types';
 
 const api = axios.create({
   baseURL: '/api',
@@ -49,6 +49,8 @@ export const eventAPI = {
   }) => api.put<EventCharacter>(`/events/${eventId}/characters/${characterId}/role`, data).then((res) => res.data),
   autoUpdateConclusion: (id: number, autoUpdate: boolean = true) =>
     api.post<Event>(`/events/${id}/auto-update-conclusion`, { autoUpdateConclusion: autoUpdate }).then((res) => res.data),
+  checkDuplicates: (data: { title: string; date: string; location: string; excludeId?: number; threshold?: number }) =>
+    api.post<DuplicateCheckResponse>('/events/check-duplicates', data).then((res) => res.data),
 };
 
 export const missionAPI = {

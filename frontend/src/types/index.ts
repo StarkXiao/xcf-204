@@ -127,6 +127,23 @@ export interface LevelHistory {
   createdAt: string;
 }
 
+export interface DuplicateEventResult {
+  event: Event;
+  similarity: {
+    title: number;
+    date: number;
+    location: number;
+    overall: number;
+  };
+  matchReasons: string[];
+}
+
+export interface DuplicateCheckResponse {
+  duplicates: DuplicateEventResult[];
+  total: number;
+  threshold: number;
+}
+
 export interface LoginResponse {
   token: string;
   user: User;

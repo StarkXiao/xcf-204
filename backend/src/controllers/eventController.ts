@@ -4,6 +4,90 @@ import { z } from 'zod';
 
 const prisma = new PrismaClient();
 
+const levenshteinDistance = (a: string, b: string): number => {
+  const matrix = [];
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i];
+  }
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0][j] = j;
+  }
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+};
+
+const stringSimilarity = (str1: string, str2: string): number => {
+  if (!str1 || !str2) return 0;
+  const s1 = str1.toLowerCase().trim();
+  const s2 = str2.toLowerCase().trim();
+  if (s1 === s2) return 1;
+  const maxLength = Math.max(s1.length, s2.length);
+  if (maxLength === 0) return 1;
+  const distance = levenshteinDistance(s1, s2);
+  return 1 - distance / maxLength;
+};
+
+const dateSimilarity = (date1: string, date2: string, daysThreshold: number = 7): number => {
+  const d1 = new Date(date1);
+  const d2 = new Date(date2);
+  const diffTime = Math.abs(d1.getTime() - d2.getTime());
+  const diffDays = diffTime / (1000 * 60 * 60 * 24);
+  if (diffDays === 0) return 1;
+  if (diffDays <= daysThreshold) {
+    return 1 - (diffDays / daysThreshold) * 0.5;
+  }
+  return Math.max(0, 1 - (diffDays - daysThreshold) / 30);
+};
+
+const locationSimilarity = (loc1: string, loc2: string): number => {
+  if (!loc1 || !loc2) return 0;
+  const l1 = loc1.toLowerCase().trim();
+  const l2 = loc2.toLowerCase().trim();
+  if (l1 === l2) return 1;
+  if (l1.includes(l2) || l2.includes(l1)) return 0.8;
+  return stringSimilarity(l1, l2);
+};
+
+const calculateOverallSimilarity = (
+  titleSim: number,
+  dateSim: number,
+  locationSim: number
+): number => {
+  const weights = { title: 0.4, date: 0.3, location: 0.3 };
+  return titleSim * weights.title + dateSim * weights.date + locationSim * weights.location;
+};
+
+const checkDuplicateEventsSchema = z.object({
+  title: z.string().min(1),
+  date: z.string().min(1),
+  location: z.string().min(1),
+  excludeId: z.number().optional(),
+  threshold: z.number().min(0).max(1).optional(),
+});
+
+export interface DuplicateEventResult {
+  event: any;
+  similarity: {
+    title: number;
+    date: number;
+    location: number;
+    overall: number;
+  };
+  matchReasons: string[];
+}
+
 const eventSchema = z.object({
   title: z.string().min(1),
   type: z.string().min(1),
@@ -336,5 +420,88 @@ export const deleteEvent = async (req: Request, res: Response) => {
     res.json({ message: '删除成功' });
   } catch (error) {
     res.status(404).json({ message: '事件不存在' });
+  }
+};
+
+export const checkDuplicateEvents = async (req: Request, res: Response) => {
+  try {
+    const { title, date, location, excludeId, threshold = 0.6 } = checkDuplicateEventsSchema.parse(req.body);
+
+    const user = (req as any).user;
+    const isAdmin = user?.role === 'admin';
+    const characterId = user?.characterId;
+
+    const where: any = {};
+    if (!isAdmin) {
+      where.OR = [
+        { isPublic: true },
+      ];
+      if (characterId) {
+        where.OR.push({
+          characters: {
+            some: { characterId },
+          },
+        });
+      }
+    }
+    if (excludeId) {
+      where.id = { not: excludeId };
+    }
+
+    const existingEvents = await prisma.event.findMany({
+      where,
+      include: {
+        characters: { include: { character: true } },
+        missions: true,
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    const duplicateResults: DuplicateEventResult[] = [];
+
+    for (const event of existingEvents) {
+      const titleSim = stringSimilarity(title, event.title);
+      const eventDateStr = event.date instanceof Date 
+        ? event.date.toISOString().split('T')[0] 
+        : String(event.date);
+      const dateSim = dateSimilarity(date, eventDateStr);
+      const locationSim = locationSimilarity(location, event.location);
+      const overallSim = calculateOverallSimilarity(titleSim, dateSim, locationSim);
+
+      if (overallSim >= threshold) {
+        const matchReasons: string[] = [];
+        if (titleSim >= 0.7) {
+          matchReasons.push(`标题相似度 ${(titleSim * 100).toFixed(0)}%`);
+        }
+        if (dateSim >= 0.7) {
+          matchReasons.push(`日期相近`);
+        }
+        if (locationSim >= 0.7) {
+          matchReasons.push(`地点相似度 ${(locationSim * 100).toFixed(0)}%`);
+        }
+
+        duplicateResults.push({
+          event,
+          similarity: {
+            title: Math.round(titleSim * 100) / 100,
+            date: Math.round(dateSim * 100) / 100,
+            location: Math.round(locationSim * 100) / 100,
+            overall: Math.round(overallSim * 100) / 100,
+          },
+          matchReasons,
+        });
+      }
+    }
+
+    duplicateResults.sort((a, b) => b.similarity.overall - a.similarity.overall);
+
+    res.json({
+      duplicates: duplicateResults,
+      total: duplicateResults.length,
+      threshold,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(400).json({ message: '检查重复事件失败' });
   }
 };
