@@ -41,12 +41,21 @@ export const getEvents = async (req: Request, res: Response) => {
   const isAdmin = user?.role === 'admin';
   const characterId = user?.characterId;
 
+  const missionsInclude: any = isAdmin
+    ? { include: { characters: { include: { character: true } }, event: true } }
+    : {
+        where: characterId
+          ? { characters: { some: { characterId } } }
+          : { id: -1 },
+        include: { characters: { include: { character: true } }, event: true },
+      };
+
   let events;
   if (isAdmin) {
     events = await prisma.event.findMany({
       include: {
         characters: { include: { character: true } },
-        missions: true,
+        missions: missionsInclude,
       },
       orderBy: { date: 'desc' },
     });
@@ -67,7 +76,7 @@ export const getEvents = async (req: Request, res: Response) => {
       where,
       include: {
         characters: { include: { character: true } },
-        missions: true,
+        missions: missionsInclude,
       },
       orderBy: { date: 'desc' },
     });
@@ -81,11 +90,20 @@ export const getEvent = async (req: Request, res: Response) => {
   const isAdmin = user?.role === 'admin';
   const characterId = user?.characterId;
 
+  const missionsInclude: any = isAdmin
+    ? { include: { characters: { include: { character: true } }, event: true } }
+    : {
+        where: characterId
+          ? { characters: { some: { characterId } } }
+          : { id: -1 },
+        include: { characters: { include: { character: true } }, event: true },
+      };
+
   const event = await prisma.event.findUnique({
     where: { id: Number(id) },
     include: {
       characters: { include: { character: true } },
-      missions: true,
+      missions: missionsInclude,
     },
   });
   if (!event) {
