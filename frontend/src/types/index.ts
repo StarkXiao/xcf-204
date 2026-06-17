@@ -17,6 +17,7 @@ export interface Character {
   updatedAt: string;
   events?: CharacterEvent[];
   missions?: CharacterMission[];
+  levelHistories?: LevelHistory[];
 }
 
 export interface Event {
@@ -85,6 +86,20 @@ export interface Worldview {
     totalEvents: string;
     activeMissions: string;
   };
+}
+
+export interface LevelHistory {
+  id: number;
+  characterId: number;
+  oldLevel: string;
+  newLevel: string;
+  reason: string;
+  description?: string;
+  eventId?: number;
+  event?: Event;
+  missionId?: number;
+  mission?: Mission;
+  createdAt: string;
 }
 
 export interface LoginResponse {

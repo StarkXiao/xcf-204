@@ -5,14 +5,20 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: ReactNode;
+  size?: 'default' | 'large';
 }
 
-const Modal = ({ isOpen, onClose, title, children }: ModalProps) => {
+const Modal = ({ isOpen, onClose, title, children, size = 'default' }: ModalProps) => {
   if (!isOpen) return null;
+
+  const sizeClasses = {
+    default: 'max-w-lg',
+    large: 'max-w-2xl',
+  };
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)] w-full max-w-lg max-h-[90vh] overflow-hidden">
+      <div className={`bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)] w-full ${sizeClasses[size]} max-h-[90vh] overflow-hidden`}>
         <div className="flex items-center justify-between p-6 border-b border-[var(--border)]">
           <h3 className="text-xl font-bold">{title}</h3>
           <button

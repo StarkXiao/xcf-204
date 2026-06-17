@@ -1,11 +1,27 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { characterAPI, eventAPI, missionAPI } from '../api';
-import { Character, Event, Mission } from '../types';
+import { Character, Event, Mission, LevelHistory } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import Modal from '../components/Modal';
 import { Button, InputField, SelectField, TextareaField } from '../components/FormField';
 import Badge from '../components/Badge';
+
+type TimelineItemType = 'level-up' | 'level-down' | 'event' | 'mission';
+
+interface TimelineItem {
+  id: string;
+  type: TimelineItemType;
+  date: string;
+  title: string;
+  description?: string;
+  level?: { old: string; new: string };
+  eventId?: number;
+  missionId?: number;
+  eventType?: string;
+  missionStatus?: string;
+  missionPriority?: string;
+}
 
 const CharactersPage = () => {
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -14,8 +30,10 @@ const CharactersPage = () => {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [growthModalOpen, setGrowthModalOpen] = useState(false);
   const [selectedChar, setSelectedChar] = useState<Character | null>(null);
   const [editingChar, setEditingChar] = useState<Character | null>(null);
+  const [levelHistories, setLevelHistories] = useState<LevelHistory[]>([]);
   const [formData, setFormData] = useState({
     name: '',
     codeName: '',
@@ -66,6 +84,76 @@ const CharactersPage = () => {
 
   const goToMissionDetail = (missionId: number) => {
     navigate(`/missions?missionId=${missionId}`);
+  };
+
+  const openGrowthTrail = async (char: Character) => {
+    try {
+      const histories = await characterAPI.getLevelHistories(char.id);
+      setLevelHistories(histories);
+      setGrowthModalOpen(true);
+    } catch (err) {
+      console.error('获取等级历史失败', err);
+      setLevelHistories([]);
+      setGrowthModalOpen(true);
+    }
+  };
+
+  const buildTimeline = (charId: number): TimelineItem[] => {
+    const items: TimelineItem[] = [];
+
+    levelHistories.forEach((history) => {
+      const isLevelUp = compareLevels(history.newLevel, history.oldLevel) > 0;
+      items.push({
+        id: `level-${history.id}`,
+        type: isLevelUp ? 'level-up' : 'level-down',
+        date: history.createdAt,
+        title: isLevelUp ? '等级提升' : '等级下降',
+        description: history.reason + (history.description ? `：${history.description}` : ''),
+        level: { old: history.oldLevel, new: history.newLevel },
+        eventId: history.eventId,
+        missionId: history.missionId,
+      });
+    });
+
+    const charEvents = events.filter((e) =>
+      e.characters?.some((ec) => ec.characterId === charId)
+    );
+    charEvents.forEach((event) => {
+      items.push({
+        id: `event-${event.id}`,
+        type: 'event',
+        date: event.date,
+        title: event.title,
+        description: event.description,
+        eventId: event.id,
+        eventType: event.type,
+      });
+    });
+
+    const charMissions = missions.filter((m) =>
+      m.characters?.some((mc) => mc.characterId === charId)
+    );
+    charMissions.forEach((mission) => {
+      items.push({
+        id: `mission-${mission.id}`,
+        type: 'mission',
+        date: mission.dueDate,
+        title: mission.title,
+        description: mission.description,
+        missionId: mission.id,
+        missionStatus: mission.status,
+        missionPriority: mission.priority,
+      });
+    });
+
+    items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    return items;
+  };
+
+  const compareLevels = (levelA: string, levelB: string): number => {
+    const levelOrder = ['D级', 'C级', 'B级', 'A级', 'S级', 'SS级'];
+    return levelOrder.indexOf(levelA) - levelOrder.indexOf(levelB);
   };
 
   const openModal = (char?: Character) => {
@@ -398,6 +486,20 @@ const CharactersPage = () => {
               </div>
             </div>
 
+            <div className="pt-4 border-t border-[var(--border)]">
+              <Button
+                variant="secondary"
+                className="w-full"
+                onClick={() => {
+                  if (selectedChar) {
+                    openGrowthTrail(selectedChar);
+                  }
+                }}
+              >
+                📈 查看成长轨迹
+              </Button>
+            </div>
+
             {isAdmin && (
               <div className="flex gap-2 pt-4 border-t border-[var(--border)]">
                 <Button
@@ -424,6 +526,169 @@ const CharactersPage = () => {
                 </Button>
               </div>
             )}
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={growthModalOpen}
+        onClose={() => setGrowthModalOpen(false)}
+        title="角色成长轨迹"
+        size="large"
+      >
+        {selectedChar && (
+          <div className="space-y-6">
+            <div className="flex items-center gap-4 pb-4 border-b border-[var(--border)]">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-secondary)] flex items-center justify-center text-3xl shrink-0">
+                {selectedChar.avatar || '👤'}
+              </div>
+              <div>
+                <h2 className="text-xl font-bold">{selectedChar.name}</h2>
+                <p className="text-[var(--text-secondary)]">
+                  {selectedChar.ability} · 
+                  <Badge color={levelColors[selectedChar.level] || 'gray'} className="ml-2">
+                    {selectedChar.level}
+                  </Badge>
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
+              {buildTimeline(selectedChar.id).length === 0 ? (
+                <div className="text-center py-12 text-[var(--text-secondary)]">
+                  <p className="text-4xl mb-4">📊</p>
+                  <p>暂无成长记录</p>
+                </div>
+              ) : (
+                <div className="relative">
+                  <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-[var(--border)]"></div>
+                  
+                  {buildTimeline(selectedChar.id).map((item) => (
+                    <div key={item.id} className="relative pl-14 pb-6">
+                      <div
+                        className={`absolute left-0 w-10 h-10 rounded-full flex items-center justify-center text-lg z-10 ${
+                          item.type === 'level-up'
+                            ? 'bg-green-500/20 border-2 border-green-500'
+                            : item.type === 'level-down'
+                            ? 'bg-red-500/20 border-2 border-red-500'
+                            : item.type === 'event'
+                            ? 'bg-blue-500/20 border-2 border-blue-500'
+                            : 'bg-yellow-500/20 border-2 border-yellow-500'
+                        }`}
+                      >
+                        {item.type === 'level-up' && '⬆️'}
+                        {item.type === 'level-down' && '⬇️'}
+                        {item.type === 'event' && '📋'}
+                        {item.type === 'mission' && '📅'}
+                      </div>
+
+                      <div className="bg-[var(--bg-tertiary)] rounded-xl p-4 hover:bg-[var(--border)] transition-colors">
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <h4 className="font-medium">{item.title}</h4>
+                            <p className="text-xs text-[var(--text-secondary)]">
+                              {new Date(item.date).toLocaleString('zh-CN', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            {item.type === 'level-up' || item.type === 'level-down' ? (
+                              <div className="flex items-center gap-2">
+                                {item.level && (
+                                  <>
+                                    <Badge color={levelColors[item.level.old] || 'gray'} className="text-xs">
+                                      {item.level.old}
+                                    </Badge>
+                                    <span className="text-[var(--text-secondary)]">→</span>
+                                    <Badge color={levelColors[item.level.new] || 'gray'} className="text-xs">
+                                      {item.level.new}
+                                    </Badge>
+                                  </>
+                                )}
+                              </div>
+                            ) : item.type === 'event' ? (
+                              item.eventType && (
+                                <Badge color={typeColors[item.eventType] || 'gray'} className="text-xs">
+                                  {item.eventType}
+                                </Badge>
+                              )
+                            ) : (
+                              item.missionStatus && (
+                                <Badge
+                                  color={missionStatusColors[item.missionStatus] || 'gray'}
+                                  className="text-xs"
+                                >
+                                  {item.missionStatus}
+                                </Badge>
+                              )
+                            )}
+                          </div>
+                        </div>
+
+                        {item.description && (
+                          <p className="text-sm text-[var(--text-secondary)] mb-3 line-clamp-2">
+                            {item.description}
+                          </p>
+                        )}
+
+                        {(item.eventId || item.missionId) && (
+                          <div className="flex gap-2">
+                            {item.eventId && (
+                              <button
+                                className="text-xs text-[var(--accent-primary)] hover:underline"
+                                onClick={() => {
+                                  setGrowthModalOpen(false);
+                                  goToEventDetail(item.eventId!);
+                                }}
+                              >
+                                查看事件详情 →
+                              </button>
+                            )}
+                            {item.missionId && (
+                              <button
+                                className="text-xs text-[var(--accent-primary)] hover:underline"
+                                onClick={() => {
+                                  setGrowthModalOpen(false);
+                                  goToMissionDetail(item.missionId!);
+                                }}
+                              >
+                                查看任务详情 →
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="pt-4 border-t border-[var(--border)]">
+              <div className="flex flex-wrap gap-4 justify-center text-sm text-[var(--text-secondary)]">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                  <span>等级提升</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                  <span>等级下降</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                  <span>参与事件</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                  <span>执行任务</span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </Modal>

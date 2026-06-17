@@ -16,22 +16,23 @@ model User {
 }
 
 model Character {
-  id          Int      @id @default(autoincrement())
-  name        String
-  codeName    String?
-  ability     String
-  level       String
-  status      String
-  description String?
-  avatar      String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  events      EventCharacter[]
-  missions    MissionCharacter[]
+  id            Int              @id @default(autoincrement())
+  name          String
+  codeName      String?
+  ability       String
+  level         String
+  status        String
+  description   String?
+  avatar        String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  events        EventCharacter[]
+  missions      MissionCharacter[]
+  levelHistories LevelHistory[]
 }
 
 model Event {
-  id             Int      @id @default(autoincrement())
+  id             Int              @id @default(autoincrement())
   title          String
   type           String
   level          String
@@ -39,25 +40,27 @@ model Event {
   location       String
   description    String
   result         String?
-  disposalStatus String   @default("待处置")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  disposalStatus String           @default("待处置")
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
   characters     EventCharacter[]
   missions       Mission[]
+  levelHistories LevelHistory[]
 }
 
 model Mission {
-  id          Int      @id @default(autoincrement())
-  title       String
-  description String
-  priority    String
-  status      String
-  dueDate     DateTime
-  eventId     Int?
-  event       Event?   @relation(fields: [eventId], references: [id], onDelete: SetNull)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  characters  MissionCharacter[]
+  id             Int              @id @default(autoincrement())
+  title          String
+  description    String
+  priority       String
+  status         String
+  dueDate        DateTime
+  eventId        Int?
+  event          Event?           @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  characters     MissionCharacter[]
+  levelHistories LevelHistory[]
 }
 
 model EventCharacter {
@@ -78,4 +81,19 @@ model MissionCharacter {
   character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
 
   @@id([missionId, characterId])
+}
+
+model LevelHistory {
+  id          Int      @id @default(autoincrement())
+  characterId Int
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  oldLevel    String
+  newLevel    String
+  reason      String
+  description String?
+  eventId     Int?
+  event       Event?   @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  missionId   Int?
+  mission     Mission? @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
 }

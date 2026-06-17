@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Character, Event, Mission, LoginResponse, Worldview } from '../types';
+import { Character, Event, Mission, LoginResponse, Worldview, LevelHistory } from '../types';
 
 const api = axios.create({
   baseURL: '/api',
@@ -29,6 +29,10 @@ export const characterAPI = {
   update: (id: number, data: Omit<Character, 'id' | 'createdAt' | 'updatedAt'>) =>
     api.put<Character>(`/characters/${id}`, data).then((res) => res.data),
   delete: (id: number) => api.delete(`/characters/${id}`).then((res) => res.data),
+  getLevelHistories: (characterId: number) =>
+    api.get<LevelHistory[]>(`/characters/${characterId}/level-histories`).then((res) => res.data),
+  createLevelHistory: (characterId: number, data: Omit<LevelHistory, 'id' | 'characterId' | 'createdAt' | 'event' | 'mission'>) =>
+    api.post<LevelHistory>(`/characters/${characterId}/level-histories`, data).then((res) => res.data),
 };
 
 export const eventAPI = {
