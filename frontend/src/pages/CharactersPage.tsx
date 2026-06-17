@@ -45,6 +45,10 @@ const CharactersPage = () => {
     description: '',
     avatar: '',
   });
+  const [detailTimelineFilters, setDetailTimelineFilters] = useState({
+    eventLevel: '',
+    missionStatus: '',
+  });
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -131,6 +135,7 @@ const CharactersPage = () => {
         description: event.description,
         eventId: event.id,
         eventType: event.type,
+        sourceEvent: event,
       });
     });
 
@@ -147,6 +152,7 @@ const CharactersPage = () => {
         missionId: mission.id,
         missionStatus: mission.status,
         missionPriority: mission.priority,
+        sourceMission: mission,
       });
     });
 
@@ -190,6 +196,31 @@ const CharactersPage = () => {
   const openDetail = (char: Character) => {
     setSelectedChar(char);
     setDetailModalOpen(true);
+    setDetailTimelineFilters({ eventLevel: '', missionStatus: '' });
+  };
+
+  const filterTimeline = (items: TimelineItem[]): TimelineItem[] => {
+    return items.filter((item) => {
+      if (detailTimelineFilters.eventLevel && item.type === 'event' && item.sourceEvent) {
+        if (item.sourceEvent.level !== detailTimelineFilters.eventLevel) return false;
+      }
+      if (detailTimelineFilters.missionStatus && item.type === 'mission' && item.missionStatus) {
+        if (item.missionStatus !== detailTimelineFilters.missionStatus) return false;
+      }
+      if (detailTimelineFilters.eventLevel && item.type === 'level-up' && item.sourceEvent) {
+        if (item.sourceEvent.level !== detailTimelineFilters.eventLevel) return false;
+      }
+      if (detailTimelineFilters.eventLevel && item.type === 'level-down' && item.sourceEvent) {
+        if (item.sourceEvent.level !== detailTimelineFilters.eventLevel) return false;
+      }
+      return true;
+    });
+  };
+
+  const hasDetailTimelineFilters = detailTimelineFilters.eventLevel !== '' || detailTimelineFilters.missionStatus !== '';
+
+  const clearDetailTimelineFilters = () => {
+    setDetailTimelineFilters({ eventLevel: '', missionStatus: '' });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -430,64 +461,138 @@ const CharactersPage = () => {
             )}
 
             <div className="border-t border-[var(--border)] pt-4">
-              <h3 className="font-medium mb-3 flex items-center gap-2">
-                <span>📋</span> 关联事件 ({getCharEvents(selectedChar.id).length})
-              </h3>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {getCharEvents(selectedChar.id).length === 0 ? (
-                  <p className="text-sm text-[var(--text-secondary)]">暂无关联事件</p>
-                ) : (
-                  getCharEvents(selectedChar.id).map((event) => (
-                    <div
-                      key={event.id}
-                      className="bg-[var(--bg-tertiary)] rounded-lg p-3 hover:bg-[var(--border)] transition-colors cursor-pointer"
-                      onClick={() => goToEventDetail(event.id)}
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                <h3 className="font-medium flex items-center gap-2">
+                  <span>�</span> 活动时间线
+                </h3>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <select
+                    value={detailTimelineFilters.eventLevel}
+                    onChange={(e) => setDetailTimelineFilters({ ...detailTimelineFilters, eventLevel: e.target.value })}
+                    className="px-3 py-1.5 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-white text-sm focus:outline-none focus:border-[var(--accent-primary)] transition-colors"
+                  >
+                    <option value="">全部事件等级</option>
+                    <option value="SS级">SS级</option>
+                    <option value="S级">S级</option>
+                    <option value="A级">A级</option>
+                    <option value="B级">B级</option>
+                    <option value="C级">C级</option>
+                    <option value="D级">D级</option>
+                  </select>
+                  <select
+                    value={detailTimelineFilters.missionStatus}
+                    onChange={(e) => setDetailTimelineFilters({ ...detailTimelineFilters, missionStatus: e.target.value })}
+                    className="px-3 py-1.5 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-white text-sm focus:outline-none focus:border-[var(--accent-primary)] transition-colors"
+                  >
+                    <option value="">全部任务状态</option>
+                    <option value="待处理">待处理</option>
+                    <option value="进行中">进行中</option>
+                    <option value="已完成">已完成</option>
+                    <option value="已取消">已取消</option>
+                  </select>
+                  {hasDetailTimelineFilters && (
+                    <button
+                      onClick={clearDetailTimelineFilters}
+                      className="text-xs px-3 py-1.5 rounded-lg text-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/10 transition-colors whitespace-nowrap"
                     >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-medium">{event.title}</span>
-                        <Badge color={typeColors[event.type] || 'gray'} className="text-xs">
-                          {event.type}
-                        </Badge>
-                      </div>
-                      <div className="text-xs text-[var(--text-secondary)]">
-                        📅 {new Date(event.date).toLocaleDateString('zh-CN')} · 📍 {event.location}
-                      </div>
-                    </div>
-                  ))
-                )}
+                      清除筛选
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
 
-            <div className="border-t border-[var(--border)] pt-4">
-              <h3 className="font-medium mb-3 flex items-center gap-2">
-                <span>📅</span> 待办任务 ({getCharMissions(selectedChar.id).filter((m) => m.status !== '已完成' && m.status !== '已取消').length})
-              </h3>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {getCharMissions(selectedChar.id).length === 0 ? (
-                  <p className="text-sm text-[var(--text-secondary)]">暂无待办任务</p>
-                ) : (
-                  getCharMissions(selectedChar.id).map((mission) => (
-                    <div
-                      key={mission.id}
-                      className="bg-[var(--bg-tertiary)] rounded-lg p-3 hover:bg-[var(--border)] transition-colors cursor-pointer"
-                      onClick={() => goToMissionDetail(mission.id)}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-medium">{mission.title}</span>
-                        <Badge color={priorityColors[mission.priority] || 'gray'} className="text-xs">
-                          {mission.priority}优先级
-                        </Badge>
+              {(() => {
+                const allTimeline = buildTimeline(selectedChar.id).filter((t) => t.type === 'event' || t.type === 'mission');
+                const filteredTimeline = filterTimeline(allTimeline);
+                return (
+                  <div className="space-y-2 max-h-[420px] overflow-y-auto">
+                    {filteredTimeline.length === 0 ? (
+                      <div className="text-center py-12 text-[var(--text-secondary)]">
+                        <p className="text-3xl mb-3">�</p>
+                        <p className="text-sm">{hasDetailTimelineFilters ? '没有符合筛选条件的记录' : '暂无活动记录'}</p>
+                        {hasDetailTimelineFilters && (
+                          <button
+                            onClick={clearDetailTimelineFilters}
+                            className="mt-3 text-xs text-[var(--accent-primary)] hover:underline"
+                          >
+                            清除筛选条件
+                          </button>
+                        )}
                       </div>
-                      <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-                        <span>📅 截止: {new Date(mission.dueDate).toLocaleDateString('zh-CN')}</span>
-                        <Badge color={missionStatusColors[mission.status] || 'gray'} className="text-xs">
-                          {mission.status}
-                        </Badge>
+                    ) : (
+                      <div className="relative">
+                        <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-[var(--border)]"></div>
+                        {filteredTimeline.map((item) => (
+                          <div key={item.id} className="relative pl-11 pb-4">
+                            <div
+                              className={`absolute left-0 w-8 h-8 rounded-full flex items-center justify-center text-sm z-10 ${
+                                item.type === 'event'
+                                  ? 'bg-blue-500/20 border-2 border-blue-500'
+                                  : 'bg-yellow-500/20 border-2 border-yellow-500'
+                              }`}
+                            >
+                              {item.type === 'event' && '📋'}
+                              {item.type === 'mission' && '📅'}
+                            </div>
+                            <div
+                              className={`rounded-xl p-3 hover:bg-[var(--border)] transition-colors cursor-pointer bg-[var(--bg-tertiary)] ${
+                                item.type === 'event' ? 'border-l-4 border-l-blue-500' : 'border-l-4 border-l-yellow-500'
+                              }`}
+                              onClick={() => {
+                                if (item.eventId) goToEventDetail(item.eventId);
+                                else if (item.missionId) goToMissionDetail(item.missionId);
+                              }}
+                            >
+                              <div className="flex items-start justify-between mb-1 gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <h4 className="font-medium text-sm truncate">{item.title}</h4>
+                                  <p className="text-xs text-[var(--text-secondary)]">
+                                    📅 {new Date(item.date).toLocaleDateString('zh-CN')}
+                                  </p>
+                                </div>
+                                <div className="flex gap-1 flex-shrink-0">
+                                  {item.type === 'event' ? (
+                                    <>
+                                      {item.eventType && (
+                                        <Badge color={typeColors[item.eventType] || 'gray'} className="text-xs">
+                                          {item.eventType}
+                                        </Badge>
+                                      )}
+                                      {item.sourceEvent?.level && (
+                                        <Badge color={levelColors[item.sourceEvent.level] || 'gray'} className="text-xs">
+                                          {item.sourceEvent.level}
+                                        </Badge>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <>
+                                      {item.missionPriority && (
+                                        <Badge color={priorityColors[item.missionPriority] || 'gray'} className="text-xs">
+                                          {item.missionPriority}
+                                        </Badge>
+                                      )}
+                                      {item.missionStatus && (
+                                        <Badge color={missionStatusColors[item.missionStatus] || 'gray'} className="text-xs">
+                                          {item.missionStatus}
+                                        </Badge>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                              {item.description && (
+                                <p className="text-xs text-[var(--text-secondary)] line-clamp-2 mt-1">
+                                  {item.description}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    </div>
-                  ))
-                )}
-              </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="pt-4 border-t border-[var(--border)]">
