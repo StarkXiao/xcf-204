@@ -1,3 +1,24 @@
+export enum CharacterStatus {
+  ON_DUTY = '出勤中',
+  STANDBY = '待命',
+  RECOVERING = '疗养',
+  MIA = '失联',
+  SERIOUSLY_INJURED = '重伤',
+  OFFLINE = '离线',
+}
+
+export const ASSIGNABLE_STATUSES: CharacterStatus[] = [
+  CharacterStatus.ON_DUTY,
+  CharacterStatus.STANDBY,
+];
+
+export const UNAVAILABLE_STATUSES: CharacterStatus[] = [
+  CharacterStatus.RECOVERING,
+  CharacterStatus.MIA,
+  CharacterStatus.SERIOUSLY_INJURED,
+  CharacterStatus.OFFLINE,
+];
+
 export interface JwtPayload {
   userId: number;
   username: string;

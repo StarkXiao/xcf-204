@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
+import { validateCharacterIdsAssignable } from './characterController';
 
 const prisma = new PrismaClient();
 
@@ -208,6 +209,18 @@ export const getEvent = async (req: Request, res: Response) => {
 export const createEvent = async (req: Request, res: Response) => {
   try {
     const { characterIds, characterRoles, disposalStatus, ...data } = eventSchema.parse(req.body);
+
+    if (characterIds && characterIds.length > 0) {
+      const validation = await validateCharacterIdsAssignable(characterIds);
+      if (!validation.valid) {
+        const invalidList = validation.invalidCharacters
+          .map((c) => `${c.name}(${c.status})`)
+          .join('、');
+        return res.status(400).json({
+          message: `以下角色当前状态不可参与事件：${invalidList}`,
+        });
+      }
+    }
     
     let finalStatus = disposalStatus || '待处置';
     if (data.result) {
@@ -259,6 +272,18 @@ export const updateEvent = async (req: Request, res: Response) => {
     const { characterIds, characterRoles, disposalStatus, ...data } = eventSchema.parse(req.body);
 
     const eventId = Number(id);
+
+    if (characterIds && characterIds.length > 0) {
+      const validation = await validateCharacterIdsAssignable(characterIds);
+      if (!validation.valid) {
+        const invalidList = validation.invalidCharacters
+          .map((c) => `${c.name}(${c.status})`)
+          .join('、');
+        return res.status(400).json({
+          message: `以下角色当前状态不可参与事件：${invalidList}`,
+        });
+      }
+    }
 
     if (characterIds) {
       await prisma.eventCharacter.deleteMany({ where: { eventId } });

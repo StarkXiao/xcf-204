@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { eventAPI, characterAPI, missionAPI } from '../api';
-import { Event, Character, Mission, EventCharacter, DuplicateEventResult } from '../types';
+import { Event, Character, Mission, EventCharacter, DuplicateEventResult, isAssignableStatus } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import Modal from '../components/Modal';
 import { Button, InputField, SelectField, TextareaField } from '../components/FormField';
@@ -530,35 +530,51 @@ const EventsPage = () => {
           </div>
           <div className="mb-4">
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">参与角色</label>
+            <div className="mb-2 text-xs text-[var(--text-secondary)]">
+              💡 提示：只有"出勤中"和"待命"状态的角色可被选入事件
+            </div>
             <div className="flex flex-wrap gap-2">
-              {characters.map((char) => (
-                <label
-                  key={char.id}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
-                    formData.characterIds.includes(char.id)
-                      ? 'bg-[var(--accent-primary)] text-white'
-                      : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--border)]'
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={formData.characterIds.includes(char.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setFormData({ ...formData, characterIds: [...formData.characterIds, char.id] });
-                      } else {
-                        setFormData({
-                          ...formData,
-                          characterIds: formData.characterIds.filter((id) => id !== char.id),
-                        });
-                      }
-                    }}
-                    className="hidden"
-                  />
-                  <span>{char.avatar}</span>
-                  <span className="text-sm">{char.name}</span>
-                </label>
-              ))}
+              {characters.map((char) => {
+                const assignable = isAssignableStatus(char.status);
+                return (
+                  <label
+                    key={char.id}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                      !assignable
+                        ? 'bg-gray-700/30 text-gray-500 cursor-not-allowed line-through'
+                        : formData.characterIds.includes(char.id)
+                        ? 'bg-[var(--accent-primary)] text-white cursor-pointer'
+                        : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--border)] cursor-pointer'
+                    }`}
+                    title={assignable ? '' : `当前状态：${char.status}，不可参与`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={formData.characterIds.includes(char.id)}
+                      disabled={!assignable}
+                      onChange={(e) => {
+                        if (!assignable) return;
+                        if (e.target.checked) {
+                          setFormData({ ...formData, characterIds: [...formData.characterIds, char.id] });
+                        } else {
+                          setFormData({
+                            ...formData,
+                            characterIds: formData.characterIds.filter((id) => id !== char.id),
+                          });
+                        }
+                      }}
+                      className="hidden"
+                    />
+                    <span>{char.avatar}</span>
+                    <span className="text-sm">{char.name}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${
+                      assignable ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'
+                    }`}>
+                      {char.status}
+                    </span>
+                  </label>
+                );
+              })}
             </div>
           </div>
           <div className="flex gap-4 mt-6">

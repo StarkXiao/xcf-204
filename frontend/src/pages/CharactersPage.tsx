@@ -261,9 +261,12 @@ const CharactersPage = () => {
     'D级': 'gray',
   };
 
-  const statusColors: Record<string, 'green' | 'yellow' | 'gray'> = {
-    '活跃': 'green',
+  const statusColors: Record<string, 'green' | 'yellow' | 'gray' | 'blue' | 'red' | 'purple'> = {
+    '出勤中': 'green',
     '待命': 'yellow',
+    '疗养': 'blue',
+    '失联': 'purple',
+    '重伤': 'red',
     '离线': 'gray',
   };
 
@@ -393,10 +396,12 @@ const CharactersPage = () => {
               value={formData.status}
               onChange={(e) => setFormData({ ...formData, status: e.target.value })}
               options={[
-                { value: '活跃', label: '活跃' },
-                { value: '待命', label: '待命' },
-                { value: '离线', label: '离线' },
-                { value: '重伤', label: '重伤' },
+                { value: '出勤中', label: '出勤中 - 可执行任务' },
+                { value: '待命', label: '待命 - 可执行任务' },
+                { value: '疗养', label: '疗养 - 不可指派' },
+                { value: '失联', label: '失联 - 不可指派' },
+                { value: '重伤', label: '重伤 - 不可指派' },
+                { value: '离线', label: '离线 - 不可指派' },
               ]}
             />
           </div>

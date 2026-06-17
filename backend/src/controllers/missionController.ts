@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
+import { validateCharacterIdsAssignable } from './characterController';
 
 const prisma = new PrismaClient();
 
@@ -91,6 +92,18 @@ export const getMission = async (req: Request, res: Response) => {
 export const createMission = async (req: Request, res: Response) => {
   try {
     const { characterIds, eventId, ...data } = missionSchema.parse(req.body);
+
+    if (characterIds && characterIds.length > 0) {
+      const validation = await validateCharacterIdsAssignable(characterIds);
+      if (!validation.valid) {
+        const invalidList = validation.invalidCharacters
+          .map((c) => `${c.name}(${c.status})`)
+          .join('、');
+        return res.status(400).json({
+          message: `以下角色当前状态不可指派任务：${invalidList}`,
+        });
+      }
+    }
     
     const mission = await prisma.mission.create({
       data: {
@@ -204,6 +217,18 @@ export const updateMission = async (req: Request, res: Response) => {
       where: { id: missionId },
       select: { eventId: true, status: true },
     });
+
+    if (characterIds && characterIds.length > 0) {
+      const validation = await validateCharacterIdsAssignable(characterIds);
+      if (!validation.valid) {
+        const invalidList = validation.invalidCharacters
+          .map((c) => `${c.name}(${c.status})`)
+          .join('、');
+        return res.status(400).json({
+          message: `以下角色当前状态不可指派任务：${invalidList}`,
+        });
+      }
+    }
 
     await prisma.missionCharacter.deleteMany({ where: { missionId } });
 

@@ -1,18 +1,55 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
+import { CharacterStatus, ASSIGNABLE_STATUSES, UNAVAILABLE_STATUSES } from '../types';
 
 const prisma = new PrismaClient();
+
+const VALID_STATUSES = Object.values(CharacterStatus);
 
 const characterSchema = z.object({
   name: z.string().min(1),
   codeName: z.string().optional(),
   ability: z.string().min(1),
   level: z.string().min(1),
-  status: z.string().min(1),
+  status: z.enum(VALID_STATUSES as [string, ...string[]]),
   description: z.string().optional(),
   avatar: z.string().optional(),
 });
+
+export const isAssignableStatus = (status: string): boolean => {
+  return ASSIGNABLE_STATUSES.includes(status as CharacterStatus);
+};
+
+export const getAssignableCharacters = async () => {
+  return prisma.character.findMany({
+    where: {
+      status: {
+        in: ASSIGNABLE_STATUSES,
+      },
+    },
+  });
+};
+
+export const validateCharacterIdsAssignable = async (characterIds: number[]): Promise<{ valid: boolean; invalidCharacters: { id: number; name: string; status: string }[] }> => {
+  const invalidCharacters: { id: number; name: string; status: string }[] = [];
+
+  for (const id of characterIds) {
+    const character = await prisma.character.findUnique({
+      where: { id },
+      select: { id: true, name: true, status: true },
+    });
+
+    if (character && !isAssignableStatus(character.status)) {
+      invalidCharacters.push(character);
+    }
+  }
+
+  return {
+    valid: invalidCharacters.length === 0,
+    invalidCharacters,
+  };
+};
 
 const levelHistorySchema = z.object({
   oldLevel: z.string().min(1),
