@@ -607,33 +607,110 @@ const EventsPage = () => {
                 <span className="text-xs text-[var(--text-secondary)] font-normal">
                   （通过共同角色关联）
                 </span>
+                {getEventMissions(selectedEvent.id).length > 0 && (
+                  <span className="text-xs ml-auto">
+                    <Badge color="green" className="text-xs">
+                      已完成 {getEventMissions(selectedEvent.id).filter((m) => m.status === '已完成').length}
+                    </Badge>
+                    <Badge color="gray" className="text-xs ml-1">
+                      共 {getEventMissions(selectedEvent.id).length}
+                    </Badge>
+                  </span>
+                )}
               </h3>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
+              <div className="space-y-2 max-h-64 overflow-y-auto">
                 {getEventMissions(selectedEvent.id).length === 0 ? (
                   <p className="text-sm text-[var(--text-secondary)]">暂无相关任务</p>
                 ) : (
                   getEventMissions(selectedEvent.id).map((mission) => (
                     <div
                       key={mission.id}
-                      className="bg-[var(--bg-tertiary)] rounded-lg p-3 hover:bg-[var(--border)] transition-colors cursor-pointer"
-                      onClick={() => goToMissionDetail(mission.id)}
+                      className="bg-[var(--bg-tertiary)] rounded-lg p-3 hover:bg-[var(--border)] transition-colors"
                     >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-medium">{mission.title}</span>
-                        <Badge color={priorityColors[mission.priority] || 'gray'} className="text-xs">
-                          {mission.priority}优先级
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-                        <span>📅 截止: {new Date(mission.dueDate).toLocaleDateString('zh-CN')}</span>
-                        <Badge color={missionStatusColors[mission.status] || 'gray'} className="text-xs">
-                          {mission.status}
-                        </Badge>
+                      <div className="flex items-start justify-between mb-1 gap-2">
+                        <div
+                          className="flex-1 cursor-pointer min-w-0"
+                          onClick={() => goToMissionDetail(mission.id)}
+                        >
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium">{mission.title}</span>
+                            <Badge color={priorityColors[mission.priority] || 'gray'} className="text-xs">
+                              {mission.priority}优先级
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)] mt-1">
+                            <span>📅 截止: {new Date(mission.dueDate).toLocaleDateString('zh-CN')}</span>
+                            <Badge color={missionStatusColors[mission.status] || 'gray'} className="text-xs">
+                              {mission.status}
+                            </Badge>
+                          </div>
+                        </div>
+                        {isAdmin && mission.status !== '已完成' && (
+                          <button
+                            className="text-xs px-2 py-1 rounded bg-green-500/20 text-green-500 hover:bg-green-500 hover:text-white transition-colors flex-shrink-0"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                await missionAPI.update(mission.id, {
+                                  title: mission.title,
+                                  description: mission.description,
+                                  priority: mission.priority,
+                                  status: '已完成',
+                                  dueDate: new Date(mission.dueDate).toISOString().split('T')[0],
+                                  eventId: mission.eventId,
+                                  characterIds: mission.characters?.map((c) => c.characterId) || [],
+                                });
+                                loadData();
+                                alert('任务已标记为完成，事件结论将自动更新');
+                              } catch (err: any) {
+                                alert(err.response?.data?.message || '操作失败');
+                              }
+                            }}
+                          >
+                            ✓ 标记完成
+                          </button>
+                        )}
+                        {isAdmin && mission.status === '已完成' && (
+                          <button
+                            className="text-xs px-2 py-1 rounded bg-yellow-500/20 text-yellow-500 hover:bg-yellow-500 hover:text-white transition-colors flex-shrink-0"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                await missionAPI.update(mission.id, {
+                                  title: mission.title,
+                                  description: mission.description,
+                                  priority: mission.priority,
+                                  status: '进行中',
+                                  dueDate: new Date(mission.dueDate).toISOString().split('T')[0],
+                                  eventId: mission.eventId,
+                                  characterIds: mission.characters?.map((c) => c.characterId) || [],
+                                });
+                                loadData();
+                              } catch (err: any) {
+                                alert(err.response?.data?.message || '操作失败');
+                              }
+                            }}
+                          >
+                            ↺ 重开
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))
                 )}
               </div>
+              {isAdmin && getEventMissions(selectedEvent.id).length > 0 && (
+                <div className="mt-3 pt-3 border-t border-[var(--border)]/50">
+                  <p className="text-xs text-[var(--text-secondary)] mb-2">
+                    💡 提示：当所有任务标记为"已完成"时，将自动生成事件处置结论
+                  </p>
+                  {getEventMissions(selectedEvent.id).every((m) => m.status === '已完成') && (
+                    <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-2 text-xs text-green-500">
+                      ✅ 所有任务已完成！事件处置结论和协作记录已自动回写
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {isAdmin && (
