@@ -132,6 +132,9 @@ const EventsPage = () => {
 
   const getEventMissions = (eventId: number) => {
     const event = events.find((e) => e.id === eventId);
+    if (event?.missions && event.missions.length > 0) {
+      return event.missions;
+    }
     const eventCharIds = event?.characters?.map((ec) => ec.characterId) || [];
     return missions.filter((m) =>
       m.characters?.some((mc) => eventCharIds.includes(mc.characterId))
@@ -175,6 +178,13 @@ const EventsPage = () => {
     'D级': 'gray',
   };
 
+  const disposalStatusColors: Record<string, 'gray' | 'blue' | 'green' | 'purple' | 'red'> = {
+    '待处置': 'gray',
+    '处置中': 'blue',
+    '已完成': 'green',
+    '已取消': 'gray',
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -208,6 +218,9 @@ const EventsPage = () => {
                   <h3 className="text-xl font-bold">{event.title}</h3>
                   <Badge color={typeColors[event.type] || 'gray'}>{event.type}</Badge>
                   <Badge color={levelColors[event.level] || 'gray'}>{event.level}</Badge>
+                  <Badge color={disposalStatusColors[event.disposalStatus] || 'gray'}>
+                    {event.disposalStatus}
+                  </Badge>
                   {event.result && (
                     <Badge color={event.result === '成功' ? 'green' : 'red'}>{event.result}</Badge>
                   )}
@@ -364,6 +377,9 @@ const EventsPage = () => {
                 <h2 className="text-2xl font-bold">{selectedEvent.title}</h2>
                 <Badge color={typeColors[selectedEvent.type] || 'gray'}>{selectedEvent.type}</Badge>
                 <Badge color={levelColors[selectedEvent.level] || 'gray'}>{selectedEvent.level}</Badge>
+                <Badge color={disposalStatusColors[selectedEvent.disposalStatus] || 'gray'}>
+                  {selectedEvent.disposalStatus}
+                </Badge>
                 {selectedEvent.result && (
                   <Badge color={selectedEvent.result === '成功' ? 'green' : 'red'}>
                     {selectedEvent.result}

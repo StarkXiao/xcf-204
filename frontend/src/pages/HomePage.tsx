@@ -40,6 +40,13 @@ const HomePage = () => {
     { label: '活跃角色', value: characters.filter(c => c.status === '活跃').length, icon: '⚡', color: 'green' as const },
   ];
 
+  const disposalStats = [
+    { label: '待处置', value: events.filter(e => e.disposalStatus === '待处置').length, color: 'gray' as const },
+    { label: '处置中', value: events.filter(e => e.disposalStatus === '处置中').length, color: 'blue' as const },
+    { label: '已完成', value: events.filter(e => e.disposalStatus === '已完成').length, color: 'green' as const },
+    { label: '已取消', value: events.filter(e => e.disposalStatus === '已取消').length, color: 'gray' as const },
+  ];
+
   const levelColors: Record<string, 'purple' | 'red' | 'yellow' | 'blue' | 'gray'> = {
     'S级': 'purple',
     'A级': 'red',
@@ -72,6 +79,23 @@ const HomePage = () => {
             <p className="text-4xl font-bold">{stat.value}</p>
           </div>
         ))}
+      </div>
+
+      <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl p-6">
+        <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+          <span>📊</span> 事件处置状态统计
+        </h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {disposalStats.map((stat) => (
+            <div
+              key={stat.label}
+              className="bg-[var(--bg-tertiary)] rounded-xl p-4 text-center hover:bg-[var(--border)] transition-colors"
+            >
+              <Badge color={stat.color} className="mb-3">{stat.label}</Badge>
+              <p className="text-3xl font-bold">{stat.value}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

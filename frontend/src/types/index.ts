@@ -28,9 +28,11 @@ export interface Event {
   location: string;
   description: string;
   result?: string;
+  disposalStatus: string;
   createdAt: string;
   updatedAt: string;
   characters?: EventCharacter[];
+  missions?: Mission[];
 }
 
 export interface Mission {
@@ -40,6 +42,8 @@ export interface Mission {
   priority: string;
   status: string;
   dueDate: string;
+  eventId?: number;
+  event?: Event;
   createdAt: string;
   updatedAt: string;
   characters?: MissionCharacter[];

@@ -10,6 +10,7 @@ const missionSchema = z.object({
   priority: z.string().min(1),
   status: z.string().min(1),
   dueDate: z.string().min(1),
+  eventId: z.number().optional(),
   characterIds: z.array(z.number()).optional(),
 });
 
@@ -17,6 +18,7 @@ export const getMissions = async (_req: Request, res: Response) => {
   const missions = await prisma.mission.findMany({
     include: {
       characters: { include: { character: true } },
+      event: true,
     },
     orderBy: { dueDate: 'asc' },
   });
@@ -29,6 +31,7 @@ export const getMission = async (req: Request, res: Response) => {
     where: { id: Number(id) },
     include: {
       characters: { include: { character: true } },
+      event: true,
     },
   });
   if (!mission) {
@@ -39,12 +42,13 @@ export const getMission = async (req: Request, res: Response) => {
 
 export const createMission = async (req: Request, res: Response) => {
   try {
-    const { characterIds, ...data } = missionSchema.parse(req.body);
+    const { characterIds, eventId, ...data } = missionSchema.parse(req.body);
     
     const mission = await prisma.mission.create({
       data: {
         ...data,
         dueDate: new Date(data.dueDate),
+        event: eventId ? { connect: { id: eventId } } : undefined,
         characters: characterIds
           ? {
               create: characterIds.map((id) => ({
@@ -53,8 +57,22 @@ export const createMission = async (req: Request, res: Response) => {
             }
           : undefined,
       },
-      include: { characters: { include: { character: true } } },
+      include: { 
+        characters: { include: { character: true } },
+        event: true,
+      },
     });
+
+    if (eventId) {
+      const event = await prisma.event.findUnique({ where: { id: eventId } });
+      if (event && event.disposalStatus === '待处置') {
+        await prisma.event.update({
+          where: { id: eventId },
+          data: { disposalStatus: '处置中' },
+        });
+      }
+    }
+
     res.status(201).json(mission);
   } catch (error) {
     res.status(400).json({ message: '创建失败' });
@@ -64,7 +82,7 @@ export const createMission = async (req: Request, res: Response) => {
 export const updateMission = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { characterIds, ...data } = missionSchema.parse(req.body);
+    const { characterIds, eventId, ...data } = missionSchema.parse(req.body);
 
     await prisma.missionCharacter.deleteMany({ where: { missionId: Number(id) } });
 
@@ -73,6 +91,7 @@ export const updateMission = async (req: Request, res: Response) => {
       data: {
         ...data,
         dueDate: new Date(data.dueDate),
+        event: eventId !== undefined ? (eventId ? { connect: { id: eventId } } : { disconnect: true }) : undefined,
         characters: characterIds
           ? {
               create: characterIds.map((cid) => ({
@@ -81,8 +100,22 @@ export const updateMission = async (req: Request, res: Response) => {
             }
           : undefined,
       },
-      include: { characters: { include: { character: true } } },
+      include: { 
+        characters: { include: { character: true } },
+        event: true,
+      },
     });
+
+    if (eventId) {
+      const event = await prisma.event.findUnique({ where: { id: eventId } });
+      if (event && event.disposalStatus === '待处置') {
+        await prisma.event.update({
+          where: { id: eventId },
+          data: { disposalStatus: '处置中' },
+        });
+      }
+    }
+
     res.json(mission);
   } catch (error) {
     res.status(400).json({ message: '更新失败' });

@@ -27,6 +27,7 @@ export interface EventCreate {
   location: string;
   description: string;
   result?: string;
+  disposalStatus?: string;
   characterIds?: number[];
 }
 
@@ -36,5 +37,6 @@ export interface MissionCreate {
   priority: string;
   status: string;
   dueDate: string;
+  eventId?: number;
   characterIds?: number[];
 }

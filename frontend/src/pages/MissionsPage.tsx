@@ -24,6 +24,7 @@ const MissionsPage = () => {
     priority: '中',
     status: '待处理',
     dueDate: '',
+    eventId: undefined as number | undefined,
     characterIds: [] as number[],
   });
   const { isAdmin } = useAuth();
@@ -78,6 +79,7 @@ const MissionsPage = () => {
         priority: mission.priority,
         status: mission.status,
         dueDate: new Date(mission.dueDate).toISOString().split('T')[0],
+        eventId: mission.eventId,
         characterIds: mission.characters?.map((mc) => mc.characterId) || [],
       });
     } else {
@@ -90,6 +92,7 @@ const MissionsPage = () => {
         priority: '中',
         status: '待处理',
         dueDate: nextWeek.toISOString().split('T')[0],
+        eventId: undefined,
         characterIds: [],
       });
     }
@@ -130,6 +133,9 @@ const MissionsPage = () => {
 
   const getMissionEvents = (missionId: number) => {
     const mission = missions.find((m) => m.id === missionId);
+    if (mission?.event) {
+      return [mission.event];
+    }
     const missionCharIds = mission?.characters?.map((mc) => mc.characterId) || [];
     return events.filter((e) =>
       e.characters?.some((ec) => missionCharIds.includes(ec.characterId))
@@ -171,6 +177,13 @@ const MissionsPage = () => {
     'B级': 'yellow',
     'C级': 'blue',
     'D级': 'gray',
+  };
+
+  const disposalStatusColors: Record<string, 'gray' | 'blue' | 'green' | 'purple' | 'red'> = {
+    '待处置': 'gray',
+    '处置中': 'blue',
+    '已完成': 'green',
+    '已取消': 'gray',
   };
 
   const getDaysInMonth = (date: Date) => {
@@ -394,6 +407,15 @@ const MissionsPage = () => {
             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             required
           />
+          <SelectField
+            label="关联事件"
+            value={formData.eventId?.toString() || ''}
+            onChange={(e) => setFormData({ ...formData, eventId: e.target.value ? Number(e.target.value) : undefined })}
+            options={[
+              { value: '', label: '不关联' },
+              ...events.map((event) => ({ value: event.id.toString(), label: `${event.title} (${event.type})` })),
+            ]}
+          />
           <div className="mb-4">
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">分配角色</label>
             <div className="flex flex-wrap gap-2">
@@ -510,9 +532,11 @@ const MissionsPage = () => {
             <div className="border-t border-[var(--border)] pt-4">
               <h3 className="font-medium mb-3 flex items-center gap-2">
                 <span>📋</span> 关联事件 ({getMissionEvents(selectedMission.id).length})
-                <span className="text-xs text-[var(--text-secondary)] font-normal">
-                  （通过共同角色关联）
-                </span>
+                {selectedMission.event && (
+                  <span className="text-xs text-[var(--accent-primary)] font-normal">
+                    （直接关联）
+                  </span>
+                )}
               </h3>
               <div className="space-y-2 max-h-48 overflow-y-auto">
                 {getMissionEvents(selectedMission.id).length === 0 ? (
@@ -526,12 +550,15 @@ const MissionsPage = () => {
                     >
                       <div className="flex items-center justify-between mb-1">
                         <span className="font-medium">{event.title}</span>
-                        <div className="flex gap-1">
+                        <div className="flex gap-1 flex-wrap justify-end">
                           <Badge color={typeColors[event.type] || 'gray'} className="text-xs">
                             {event.type}
                           </Badge>
                           <Badge color={eventLevelColors[event.level] || 'gray'} className="text-xs">
                             {event.level}
+                          </Badge>
+                          <Badge color={disposalStatusColors[event.disposalStatus] || 'gray'} className="text-xs">
+                            {event.disposalStatus}
                           </Badge>
                         </div>
                       </div>

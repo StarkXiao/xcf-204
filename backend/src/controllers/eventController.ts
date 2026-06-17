@@ -12,6 +12,7 @@ const eventSchema = z.object({
   location: z.string().min(1),
   description: z.string().min(1),
   result: z.string().optional(),
+  disposalStatus: z.string().optional(),
   characterIds: z.array(z.number()).optional(),
 });
 
@@ -19,6 +20,7 @@ export const getEvents = async (_req: Request, res: Response) => {
   const events = await prisma.event.findMany({
     include: {
       characters: { include: { character: true } },
+      missions: true,
     },
     orderBy: { date: 'desc' },
   });
@@ -31,6 +33,7 @@ export const getEvent = async (req: Request, res: Response) => {
     where: { id: Number(id) },
     include: {
       characters: { include: { character: true } },
+      missions: true,
     },
   });
   if (!event) {
@@ -41,11 +44,19 @@ export const getEvent = async (req: Request, res: Response) => {
 
 export const createEvent = async (req: Request, res: Response) => {
   try {
-    const { characterIds, ...data } = eventSchema.parse(req.body);
+    const { characterIds, disposalStatus, ...data } = eventSchema.parse(req.body);
+    
+    let finalStatus = disposalStatus || '待处置';
+    if (data.result) {
+      finalStatus = '已完成';
+    } else if (characterIds && characterIds.length > 0) {
+      finalStatus = '处置中';
+    }
     
     const event = await prisma.event.create({
       data: {
         ...data,
+        disposalStatus: finalStatus,
         date: new Date(data.date),
         characters: characterIds
           ? {
@@ -55,7 +66,10 @@ export const createEvent = async (req: Request, res: Response) => {
             }
           : undefined,
       },
-      include: { characters: { include: { character: true } } },
+      include: { 
+        characters: { include: { character: true } },
+        missions: true,
+      },
     });
     res.status(201).json(event);
   } catch (error) {
@@ -67,14 +81,25 @@ export const createEvent = async (req: Request, res: Response) => {
 export const updateEvent = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { characterIds, ...data } = eventSchema.parse(req.body);
+    const { characterIds, disposalStatus, ...data } = eventSchema.parse(req.body);
 
     await prisma.eventCharacter.deleteMany({ where: { eventId: Number(id) } });
+
+    let finalStatus = disposalStatus;
+    if (data.result) {
+      finalStatus = '已完成';
+    } else if (characterIds && characterIds.length > 0) {
+      finalStatus = '处置中';
+    } else if (!finalStatus) {
+      const existingEvent = await prisma.event.findUnique({ where: { id: Number(id) } });
+      finalStatus = existingEvent?.disposalStatus || '待处置';
+    }
 
     const event = await prisma.event.update({
       where: { id: Number(id) },
       data: {
         ...data,
+        disposalStatus: finalStatus,
         date: new Date(data.date),
         characters: characterIds
           ? {
@@ -84,7 +109,10 @@ export const updateEvent = async (req: Request, res: Response) => {
             }
           : undefined,
       },
-      include: { characters: { include: { character: true } } },
+      include: { 
+        characters: { include: { character: true } },
+        missions: true,
+      },
     });
     res.json(event);
   } catch (error) {
