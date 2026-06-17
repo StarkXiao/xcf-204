@@ -21,6 +21,8 @@ interface TimelineItem {
   eventType?: string;
   missionStatus?: string;
   missionPriority?: string;
+  sourceEvent?: Event;
+  sourceMission?: Mission;
 }
 
 const CharactersPage = () => {
@@ -112,6 +114,8 @@ const CharactersPage = () => {
         level: { old: history.oldLevel, new: history.newLevel },
         eventId: history.eventId,
         missionId: history.missionId,
+        sourceEvent: history.event,
+        sourceMission: history.mission,
       });
     });
 
@@ -582,7 +586,11 @@ const CharactersPage = () => {
                         {item.type === 'mission' && '📅'}
                       </div>
 
-                      <div className="bg-[var(--bg-tertiary)] rounded-xl p-4 hover:bg-[var(--border)] transition-colors">
+                      <div className={`rounded-xl p-4 hover:bg-[var(--border)] transition-colors ${
+                        item.type === 'level-up' || item.type === 'level-down'
+                          ? 'bg-[var(--bg-tertiary)] border-l-4 ' + (item.type === 'level-up' ? 'border-l-green-500' : 'border-l-red-500')
+                          : 'bg-[var(--bg-tertiary)]'
+                      }`}>
                         <div className="flex items-start justify-between mb-2">
                           <div>
                             <h4 className="font-medium">{item.title}</h4>
@@ -631,16 +639,47 @@ const CharactersPage = () => {
                         </div>
 
                         {item.description && (
-                          <p className="text-sm text-[var(--text-secondary)] mb-3 line-clamp-2">
+                          <p className="text-sm text-[var(--text-secondary)] mb-3">
                             {item.description}
                           </p>
                         )}
 
+                        {(item.sourceEvent || item.sourceMission) && (
+                          <div className="bg-[var(--bg-secondary)] rounded-lg p-3 mb-3">
+                            <p className="text-xs text-[var(--text-secondary)] mb-1">
+                              {item.sourceEvent ? '📋 来源事件' : '📅 来源任务'}
+                            </p>
+                            <p className="text-sm font-medium">
+                              {item.sourceEvent?.title || item.sourceMission?.title}
+                            </p>
+                            {item.sourceEvent && (
+                              <div className="flex gap-2 mt-1">
+                                <Badge color={typeColors[item.sourceEvent.type] || 'gray'} className="text-xs">
+                                  {item.sourceEvent.type}
+                                </Badge>
+                                <Badge color={levelColors[item.sourceEvent.level] || 'gray'} className="text-xs">
+                                  {item.sourceEvent.level}
+                                </Badge>
+                              </div>
+                            )}
+                            {item.sourceMission && (
+                              <div className="flex gap-2 mt-1">
+                                <Badge color={priorityColors[item.sourceMission.priority] || 'gray'} className="text-xs">
+                                  {item.sourceMission.priority}优先级
+                                </Badge>
+                                <Badge color={missionStatusColors[item.sourceMission.status] || 'gray'} className="text-xs">
+                                  {item.sourceMission.status}
+                                </Badge>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         {(item.eventId || item.missionId) && (
-                          <div className="flex gap-2">
+                          <div className="flex gap-4">
                             {item.eventId && (
                               <button
-                                className="text-xs text-[var(--accent-primary)] hover:underline"
+                                className="text-xs text-[var(--accent-primary)] hover:underline font-medium"
                                 onClick={() => {
                                   setGrowthModalOpen(false);
                                   goToEventDetail(item.eventId!);
@@ -651,7 +690,7 @@ const CharactersPage = () => {
                             )}
                             {item.missionId && (
                               <button
-                                className="text-xs text-[var(--accent-primary)] hover:underline"
+                                className="text-xs text-[var(--accent-primary)] hover:underline font-medium"
                                 onClick={() => {
                                   setGrowthModalOpen(false);
                                   goToMissionDetail(item.missionId!);

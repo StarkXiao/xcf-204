@@ -14,8 +14,15 @@ const MissionsPage = () => {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [levelUpModalOpen, setLevelUpModalOpen] = useState(false);
   const [selectedMission, setSelectedMission] = useState<Mission | null>(null);
   const [editingMission, setEditingMission] = useState<Mission | null>(null);
+  const [levelUpChar, setLevelUpChar] = useState<Character | null>(null);
+  const [levelUpForm, setLevelUpForm] = useState({
+    newLevel: '',
+    reason: '',
+    description: '',
+  });
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('list');
   const [formData, setFormData] = useState({
@@ -68,6 +75,34 @@ const MissionsPage = () => {
 
   const goToEventDetail = (eventId: number) => {
     navigate(`/events?eventId=${eventId}`);
+  };
+
+  const openLevelUpModal = (char: Character) => {
+    setLevelUpChar(char);
+    setLevelUpForm({
+      newLevel: char.level,
+      reason: '任务表现',
+      description: '',
+    });
+    setLevelUpModalOpen(true);
+  };
+
+  const handleLevelUp = async () => {
+    if (!levelUpChar || !selectedMission) return;
+    try {
+      await characterAPI.createLevelHistory(levelUpChar.id, {
+        oldLevel: levelUpChar.level,
+        newLevel: levelUpForm.newLevel,
+        reason: levelUpForm.reason,
+        description: levelUpForm.description,
+        missionId: selectedMission.id,
+      });
+      setLevelUpModalOpen(false);
+      loadData();
+      alert('等级调整成功');
+    } catch (err: any) {
+      alert(err.response?.data?.message || '操作失败');
+    }
   };
 
   const openModal = (mission?: Mission) => {
@@ -496,33 +531,48 @@ const MissionsPage = () => {
               <h3 className="font-medium mb-3 flex items-center gap-2">
                 <span>👤</span> 执行角色 ({getMissionCharacters(selectedMission.id).length})
               </h3>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
+              <div className="space-y-2 max-h-64 overflow-y-auto">
                 {getMissionCharacters(selectedMission.id).length === 0 ? (
                   <p className="text-sm text-[var(--text-secondary)]">暂无执行角色</p>
                 ) : (
                   getMissionCharacters(selectedMission.id).map((char) => (
                     <div
                       key={char.id}
-                      className="bg-[var(--bg-tertiary)] rounded-lg p-3 hover:bg-[var(--border)] transition-colors cursor-pointer flex items-center gap-3"
-                      onClick={() => goToCharacterDetail(char.id)}
+                      className="bg-[var(--bg-tertiary)] rounded-lg p-3 hover:bg-[var(--border)] transition-colors"
                     >
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-secondary)] flex items-center justify-center text-xl">
-                        {char.avatar || '👤'}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{char.name}</span>
-                          {char.codeName && (
-                            <span className="text-xs text-[var(--text-secondary)]">「{char.codeName}」</span>
-                          )}
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-secondary)] flex items-center justify-center text-xl cursor-pointer"
+                          onClick={() => goToCharacterDetail(char.id)}
+                        >
+                          {char.avatar || '👤'}
                         </div>
-                        <div className="text-xs text-[var(--text-secondary)]">
-                          {char.ability}
+                        <div className="flex-1 cursor-pointer" onClick={() => goToCharacterDetail(char.id)}>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{char.name}</span>
+                            {char.codeName && (
+                              <span className="text-xs text-[var(--text-secondary)]">「{char.codeName}」</span>
+                            )}
+                          </div>
+                          <div className="text-xs text-[var(--text-secondary)]">
+                            {char.ability}
+                          </div>
                         </div>
+                        <Badge color={charLevelColors[char.level] || 'gray'} className="text-xs">
+                          {char.level}
+                        </Badge>
+                        {isAdmin && (
+                          <button
+                            className="text-xs px-2 py-1 rounded bg-[var(--accent-primary)]/20 text-[var(--accent-primary)] hover:bg-[var(--accent-primary)] hover:text-white transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openLevelUpModal(char);
+                            }}
+                          >
+                            调整等级
+                          </button>
+                        )}
                       </div>
-                      <Badge color={charLevelColors[char.level] || 'gray'} className="text-xs">
-                        {char.level}
-                      </Badge>
                     </div>
                   ))
                 )}
@@ -597,6 +647,95 @@ const MissionsPage = () => {
                 </Button>
               </div>
             )}
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={levelUpModalOpen}
+        onClose={() => setLevelUpModalOpen(false)}
+        title="调整角色等级"
+      >
+        {levelUpChar && selectedMission && (
+          <div className="space-y-4">
+            <div className="bg-[var(--bg-tertiary)] rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-secondary)] flex items-center justify-center text-2xl">
+                  {levelUpChar.avatar || '👤'}
+                </div>
+                <div>
+                  <h3 className="font-bold">{levelUpChar.name}</h3>
+                  <p className="text-sm text-[var(--text-secondary)]">{levelUpChar.ability}</p>
+                </div>
+                <Badge color={charLevelColors[levelUpChar.level] || 'gray'} className="ml-auto">
+                  当前: {levelUpChar.level}
+                </Badge>
+              </div>
+            </div>
+
+            <div className="bg-[var(--bg-tertiary)] rounded-xl p-4">
+              <p className="text-sm text-[var(--text-secondary)] mb-1">关联任务</p>
+              <p className="font-medium">{selectedMission.title}</p>
+              <div className="flex gap-2 mt-2">
+                <Badge color={priorityColors[selectedMission.priority] || 'gray'} className="text-xs">
+                  {selectedMission.priority}优先级
+                </Badge>
+                <Badge color={statusColors[selectedMission.status] || 'gray'} className="text-xs">
+                  {selectedMission.status}
+                </Badge>
+              </div>
+            </div>
+
+            <SelectField
+              label="调整后等级"
+              value={levelUpForm.newLevel}
+              onChange={(e) => setLevelUpForm({ ...levelUpForm, newLevel: e.target.value })}
+              options={[
+                { value: 'D级', label: 'D级' },
+                { value: 'C级', label: 'C级' },
+                { value: 'B级', label: 'B级' },
+                { value: 'A级', label: 'A级' },
+                { value: 'S级', label: 'S级' },
+                { value: 'SS级', label: 'SS级' },
+              ]}
+            />
+
+            <SelectField
+              label="调整原因"
+              value={levelUpForm.reason}
+              onChange={(e) => setLevelUpForm({ ...levelUpForm, reason: e.target.value })}
+              options={[
+                { value: '任务完成优异', label: '任务完成优异' },
+                { value: '任务中受伤/降级', label: '任务中受伤/降级' },
+                { value: '任务表现突出', label: '任务表现突出' },
+                { value: '能力觉醒', label: '能力觉醒' },
+                { value: '其他原因', label: '其他原因' },
+              ]}
+            />
+
+            <TextareaField
+              label="详细说明"
+              value={levelUpForm.description}
+              onChange={(e) => setLevelUpForm({ ...levelUpForm, description: e.target.value })}
+              placeholder="请输入等级调整的详细说明..."
+            />
+
+            <div className="flex gap-4 pt-2">
+              <Button
+                className="flex-1"
+                onClick={handleLevelUp}
+              >
+                确认调整
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                className="flex-1"
+                onClick={() => setLevelUpModalOpen(false)}
+              >
+                取消
+              </Button>
+            </div>
           </div>
         )}
       </Modal>
