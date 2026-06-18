@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { worldviewAPI, characterAPI, eventAPI, missionAPI, missionExtensionAPI } from '../api';
-import { Worldview, Character, Event, Mission, MissionExtensionRequest } from '../types';
+import { Worldview, Character, Event, Mission, MissionExtensionRequest, RiskStats } from '../types';
 import Badge from '../components/Badge';
 import { useAuth } from '../hooks/useAuth';
 
@@ -12,6 +12,7 @@ const HomePage = () => {
   const [missions, setMissions] = useState<Mission[]>([]);
   const [pendingExtensionCount, setPendingExtensionCount] = useState(0);
   const [pendingExtensions, setPendingExtensions] = useState<MissionExtensionRequest[]>([]);
+  const [riskStats, setRiskStats] = useState<RiskStats | null>(null);
   const [loading, setLoading] = useState(true);
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
@@ -28,6 +29,13 @@ const HomePage = () => {
       setCharacters(c);
       setEvents(e);
       setMissions(m);
+
+      try {
+        const rs = await eventAPI.getRiskStats();
+        setRiskStats(rs);
+      } catch (err) {
+        console.error('加载风险统计失败', err);
+      }
 
       if (isAdmin) {
         try {
@@ -113,6 +121,8 @@ const HomePage = () => {
     return ['S级', 'A级'].includes(e.level);
   });
 
+  const escalatedEvents = events.filter((e) => e.levelEscalations && e.levelEscalations.length > 0);
+
   const idleActiveCharacters = characters.filter((c) => {
     if (c.status !== '活跃') return false;
     const missionCount = (c.missions || []).filter((m) => m.mission.status === '进行中').length;
@@ -120,6 +130,16 @@ const HomePage = () => {
   });
 
   const todoWarnings = [
+    ...escalatedEvents.map((e) => ({
+      type: 'escalation' as const,
+      id: `escalation-${e.id}`,
+      title: e.title,
+      priority: '高' as const,
+      level: e.level,
+      status: e.disposalStatus,
+      dueDate: e.date,
+      message: `事件等级已升级，需紧急处置`,
+    })),
     ...pendingExtensions.map((req) => ({
       type: 'extension' as const,
       id: `extension-${req.id}`,
@@ -162,7 +182,7 @@ const HomePage = () => {
       message: '活跃角色暂无任务分配',
     })),
   ].sort((a, b) => {
-    const typeOrder: Record<string, number> = { extension: 0, event: 1, mission: 2, character: 3 };
+    const typeOrder: Record<string, number> = { escalation: 0, extension: 1, event: 2, mission: 3, character: 4 };
     const levelOrder: Record<string, number> = { S级: 0, 'A级': 1, 'B级': 2, 'C级': 3, 'D级': 4 };
     const priorityOrder: Record<string, number> = { 高: 0, 中: 1, 低: 2 };
     if (a.type && b.type && typeOrder[a.type] !== typeOrder[b.type]) return typeOrder[a.type] - typeOrder[b.type];
@@ -171,11 +191,32 @@ const HomePage = () => {
     return 0;
   });
 
+  const riskLevelColors: Record<string, 'red' | 'yellow' | 'blue' | 'green'> = {
+    '高危': 'red',
+    '警戒': 'yellow',
+    '关注': 'blue',
+    '平稳': 'green',
+  };
+
+  const riskLevelIcons: Record<string, string> = {
+    '高危': '🔴',
+    '警戒': '🟡',
+    '关注': '🔵',
+    '平稳': '🟢',
+  };
+
   const stats = [
     { label: '注册异能者', value: characters.length, icon: '👤', color: 'purple' as const },
     { label: '事件记录', value: events.length, icon: '📋', color: 'blue' as const },
     { label: '进行中任务', value: missions.filter(m => m.status === '进行中').length, icon: '📅', color: 'yellow' as const },
     { label: '活跃角色', value: characters.filter(c => c.status === '活跃').length, icon: '⚡', color: 'green' as const },
+    ...(riskStats && riskStats.escalatedEvents > 0 ? [{
+      label: '已升级事件',
+      value: riskStats.escalatedEvents,
+      icon: '⚠️',
+      color: 'red' as const,
+      onClick: () => navigate('/events'),
+    }] : []),
     ...(isAdmin && pendingExtensionCount > 0 ? [{
       label: '待审批延期',
       value: pendingExtensionCount,
@@ -198,6 +239,7 @@ const HomePage = () => {
     'B级': 'yellow',
     'C级': 'blue',
     'D级': 'gray',
+    'SS级': 'purple',
   };
 
   return (
@@ -229,26 +271,100 @@ const HomePage = () => {
         ))}
       </div>
 
-      <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl p-6">
-        <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
-          <span>📊</span> 事件处置状态统计
-        </h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {disposalStats.map((stat) => (
-            <div
-              key={stat.label}
-              className="bg-[var(--bg-tertiary)] rounded-xl p-4 text-center hover:bg-[var(--border)] transition-colors"
-            >
-              <Badge color={stat.color} className="mb-3">{stat.label}</Badge>
-              <p className="text-3xl font-bold">{stat.value}</p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl p-6">
+          <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+            <span>📊</span> 事件处置状态统计
+          </h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {disposalStats.map((stat) => (
+              <div
+                key={stat.label}
+                className="bg-[var(--bg-tertiary)] rounded-xl p-4 text-center hover:bg-[var(--border)] transition-colors"
+              >
+                <Badge color={stat.color} className="mb-3">{stat.label}</Badge>
+                <p className="text-3xl font-bold">{stat.value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl p-6">
+          <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+            <span>�️</span> 风险态势
+            {riskStats && (
+              <Badge color={riskLevelColors[riskStats.riskLevel]}>
+                {riskLevelIcons[riskStats.riskLevel]} {riskStats.riskLevel}
+              </Badge>
+            )}
+          </h2>
+          {riskStats ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-[var(--bg-tertiary)] rounded-xl p-4 text-center">
+                  <Badge color="red" className="mb-2">高危事件</Badge>
+                  <p className="text-3xl font-bold">{riskStats.highRiskEvents}</p>
+                  <p className="text-xs text-[var(--text-secondary)] mt-1">S级/A级未处置</p>
+                </div>
+                <div className="bg-[var(--bg-tertiary)] rounded-xl p-4 text-center">
+                  <Badge color="yellow" className="mb-2">升级事件</Badge>
+                  <p className="text-3xl font-bold">{riskStats.escalatedEvents}</p>
+                  <p className="text-xs text-[var(--text-secondary)] mt-1">等级已升级</p>
+                </div>
+                <div className="bg-[var(--bg-tertiary)] rounded-xl p-4 text-center">
+                  <Badge color="blue" className="mb-2">待处置</Badge>
+                  <p className="text-3xl font-bold">{riskStats.pendingEvents}</p>
+                  <p className="text-xs text-[var(--text-secondary)] mt-1">待处置/处置中</p>
+                </div>
+                <div className="bg-[var(--bg-tertiary)] rounded-xl p-4 text-center">
+                  <Badge color="purple" className="mb-2">高优先级任务</Badge>
+                  <p className="text-3xl font-bold">{riskStats.highPriorityMissions}</p>
+                  <p className="text-xs text-[var(--text-secondary)] mt-1">进行中/待处理</p>
+                </div>
+              </div>
+              {riskStats.levelDistribution.length > 0 && (
+                <div className="pt-3 border-t border-[var(--border)]">
+                  <p className="text-sm text-[var(--text-secondary)] mb-2">事件等级分布</p>
+                  <div className="flex items-end gap-2 h-20">
+                    {riskStats.levelDistribution
+                      .sort((a, b) => (levelColors[a.level] ? 0 : 1))
+                      .map((item) => {
+                        const maxCount = Math.max(...riskStats.levelDistribution.map(d => d.count), 1);
+                        const heightPercent = (item.count / maxCount) * 100;
+                        return (
+                          <div key={item.level} className="flex-1 flex flex-col items-center gap-1">
+                            <span className="text-xs text-[var(--text-secondary)]">{item.count}</span>
+                            <div
+                              className="w-full rounded-t transition-all duration-500"
+                              style={{
+                                height: `${heightPercent}%`,
+                                minHeight: '4px',
+                                backgroundColor: item.level === 'S级' || item.level === 'SS级' ? '#a855f7'
+                                  : item.level === 'A级' ? '#ef4444'
+                                  : item.level === 'B级' ? '#eab308'
+                                  : item.level === 'C级' ? '#3b82f6'
+                                  : '#6b7280',
+                              }}
+                            />
+                            <span className="text-xs text-[var(--text-secondary)]">{item.level.replace('级', '')}</span>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
             </div>
-          ))}
+          ) : (
+            <div className="text-center py-8 text-[var(--text-secondary)]">
+              加载风险统计数据中...
+            </div>
+          )}
         </div>
       </div>
 
       <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl p-6">
         <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
-          <span>📈</span> 近七天事件趋势
+          <span>�📈</span> 近七天事件趋势
         </h2>
         <div className="flex items-end justify-between gap-3 h-48 mb-4 px-2">
           {eventTrendData.map((data, idx) => {
@@ -298,6 +414,55 @@ const HomePage = () => {
           </div>
         </div>
       </div>
+
+      {riskStats && riskStats.recentEscalations.length > 0 && (
+        <div className="bg-[var(--bg-secondary)] border border-red-500/30 rounded-2xl p-6">
+          <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+            <span>⚠️</span> 近期等级升级记录
+            <Badge color="red">{riskStats.recentEscalations.length} 条</Badge>
+          </h2>
+          <div className="space-y-3 max-h-80 overflow-y-auto">
+            {riskStats.recentEscalations.map((esc) => (
+              <div
+                key={esc.id}
+                className="bg-red-500/5 border border-red-500/20 rounded-xl p-4 cursor-pointer hover:bg-red-500/10 transition-colors"
+                onClick={() => navigate(`/events?eventId=${esc.eventId}`)}
+              >
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <Badge color="red" className="text-xs">等级升级</Badge>
+                  <span className="font-medium">{esc.event.title}</span>
+                  <Badge color={levelColors[esc.oldLevel] || 'gray'} className="text-xs">
+                    {esc.oldLevel}
+                  </Badge>
+                  <span className="text-[var(--text-secondary)] text-xs">→</span>
+                  <Badge color={levelColors[esc.newLevel] || 'gray'} className="text-xs">
+                    {esc.newLevel}
+                  </Badge>
+                  <span className="text-xs text-[var(--text-secondary)] ml-auto">
+                    {new Date(esc.createdAt).toLocaleString('zh-CN')}
+                  </span>
+                </div>
+                <p className="text-sm text-[var(--text-secondary)] mb-1">{esc.reason}</p>
+                {esc.triggeredMission && (
+                  <div
+                    className="mt-2 text-xs bg-[var(--bg-tertiary)] rounded p-2 inline-block"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/missions?missionId=${esc.triggeredMission!.id}`);
+                    }}
+                  >
+                    <span className="text-[var(--text-secondary)]">已触发任务：</span>
+                    <span className="text-[var(--accent-primary)] font-medium">{esc.triggeredMission.title}</span>
+                    <Badge color={esc.triggeredMission.status === '已完成' ? 'green' : esc.triggeredMission.status === '进行中' ? 'blue' : 'gray'} className="text-xs ml-2">
+                      {esc.triggeredMission.status}
+                    </Badge>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl p-6">
@@ -371,33 +536,35 @@ const HomePage = () => {
           </h2>
           <div className="space-y-3 max-h-96 overflow-y-auto">
             {todoWarnings.map((item) => {
-              const typeIcon = item.type === 'mission' ? '📅' : item.type === 'event' ? '📋' : item.type === 'extension' ? '⏰' : '👤';
-              const typeLabel = item.type === 'mission' ? '任务' : item.type === 'event' ? '事件' : item.type === 'extension' ? '延期审批' : '角色';
+              const typeIcon = item.type === 'escalation' ? '🔴' : item.type === 'mission' ? '📅' : item.type === 'event' ? '📋' : item.type === 'extension' ? '⏰' : '👤';
+              const typeLabel = item.type === 'escalation' ? '等级升级' : item.type === 'mission' ? '任务' : item.type === 'event' ? '事件' : item.type === 'extension' ? '延期审批' : '角色';
               const urgencyColor =
-                item.type === 'extension'
+                item.type === 'escalation'
+                  ? 'var(--danger)'
+                  : item.type === 'extension'
                   ? 'var(--danger)'
                   : item.level === 'S级' || item.priority === '高'
                   ? 'var(--danger)'
                   : item.level === 'A级' || item.priority === '中'
                   ? 'var(--warning)'
                   : 'var(--accent-primary)';
-              const badgeColor = item.type === 'mission' ? 'yellow' : item.type === 'event' ? 'blue' : item.type === 'extension' ? 'red' : 'purple';
+              const badgeColor = item.type === 'escalation' ? 'red' : item.type === 'mission' ? 'yellow' : item.type === 'event' ? 'blue' : item.type === 'extension' ? 'red' : 'purple';
               return (
                 <div
                   key={item.id}
                   className="p-4 bg-[var(--bg-tertiary)] rounded-xl hover:bg-[var(--border)] transition-colors border-l-4 cursor-pointer"
                   style={{ borderLeftColor: urgencyColor }}
                   onClick={() => {
-                    if (item.type === 'mission' || item.type === 'extension') {
+                    if (item.type === 'escalation' || item.type === 'event') {
+                      const eventId = parseInt(item.id.replace(/^(escalation|event)-/, ''));
+                      navigate(`/events?eventId=${eventId}`);
+                    } else if (item.type === 'mission' || item.type === 'extension') {
                       const missionId = item.type === 'extension'
                         ? pendingExtensions.find(e => e.id === (item as any).extensionId)?.missionId
                         : parseInt(item.id.replace('mission-', ''));
                       if (missionId) {
                         navigate(`/missions?missionId=${missionId}`);
                       }
-                    } else if (item.type === 'event') {
-                      const eventId = parseInt(item.id.replace('event-', ''));
-                      navigate(`/events?eventId=${eventId}`);
                     } else if (item.type === 'character') {
                       const charId = parseInt(item.id.replace('character-', ''));
                       navigate(`/characters?characterId=${charId}`);

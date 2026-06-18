@@ -54,6 +54,7 @@ model Event {
   characters         EventCharacter[]
   missions           Mission[]
   levelHistories     LevelHistory[]
+  levelEscalations   LevelEscalation[]
 }
 
 model Mission {
@@ -71,6 +72,7 @@ model Mission {
   levelHistories        LevelHistory[]
   extensionRequests     MissionExtensionRequest[]
   changeLogs            MissionChangeLog[]
+  triggeredEscalations  LevelEscalation[]
 }
 
 model EventCharacter {
@@ -142,4 +144,18 @@ model MissionChangeLog {
   description String?
   batchId     String?
   createdAt   DateTime @default(now())
+}
+
+model LevelEscalation {
+  id                  Int      @id @default(autoincrement())
+  eventId             Int
+  event               Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  oldLevel            String
+  newLevel            String
+  oldResult           String?
+  newResult           String?
+  reason              String
+  triggeredMissionId  Int?
+  triggeredMission    Mission? @relation(fields: [triggeredMissionId], references: [id], onDelete: SetNull)
+  createdAt           DateTime @default(now())
 }

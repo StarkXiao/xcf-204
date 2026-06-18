@@ -121,6 +121,89 @@ const autoUpdateSchema = z.object({
   autoUpdateConclusion: z.boolean().default(true),
 });
 
+const LEVEL_ORDER: Record<string, number> = {
+  'D级': 1,
+  'C级': 2,
+  'B级': 3,
+  'A级': 4,
+  'S级': 5,
+  'SS级': 6,
+};
+
+const RESULT_SEVERITY: Record<string, number> = {
+  '成功': 0,
+  '处理中': 1,
+  '部分成功': 2,
+  '失败': 3,
+};
+
+const isLevelEscalated = (oldLevel: string, newLevel: string): boolean => {
+  return (LEVEL_ORDER[newLevel] || 0) > (LEVEL_ORDER[oldLevel] || 0);
+};
+
+const isResultWorsened = (oldResult: string | null, newResult: string | null): boolean => {
+  if (!oldResult && !newResult) return false;
+  if (!oldResult && newResult) return true;
+  if (oldResult && !newResult) return false;
+  return (RESULT_SEVERITY[newResult!] || 0) > (RESULT_SEVERITY[oldResult!] || 0);
+};
+
+const handleLevelEscalation = async (
+  eventId: number,
+  oldLevel: string,
+  newLevel: string,
+  oldResult: string | null,
+  newResult: string | null,
+  eventTitle: string
+) => {
+  const reasons: string[] = [];
+  if (isLevelEscalated(oldLevel, newLevel)) {
+    reasons.push(`事件等级从 ${oldLevel} 升级为 ${newLevel}`);
+  }
+  if (isResultWorsened(oldResult, newResult)) {
+    reasons.push(`事件结果恶化：${oldResult || '无'} → ${newResult}`);
+  }
+
+  if (reasons.length === 0) return null;
+
+  const reason = reasons.join('；');
+  const dueDate = new Date();
+  dueDate.setHours(dueDate.getHours() + 24);
+
+  const mission = await prisma.mission.create({
+    data: {
+      title: `[紧急] ${eventTitle} - 等级升级应急任务`,
+      description: `事件「${eventTitle}」触发等级升级机制。\n原因：${reason}\n请立即组织力量进行应急处置。`,
+      priority: '高',
+      status: '待处理',
+      dueDate,
+      eventId,
+    },
+    include: {
+      characters: { include: { character: true } },
+      event: true,
+    },
+  });
+
+  const escalation = await prisma.levelEscalation.create({
+    data: {
+      eventId,
+      oldLevel,
+      newLevel,
+      oldResult,
+      newResult,
+      reason,
+      triggeredMissionId: mission.id,
+    },
+    include: {
+      event: true,
+      triggeredMission: true,
+    },
+  });
+
+  return { mission, escalation };
+};
+
 export const getEvents = async (req: Request, res: Response) => {
   const user = (req as any).user;
   const isAdmin = user?.role === 'admin';
@@ -141,6 +224,7 @@ export const getEvents = async (req: Request, res: Response) => {
       include: {
         characters: { include: { character: true } },
         missions: missionsInclude,
+        levelEscalations: { include: { triggeredMission: true }, orderBy: { createdAt: 'desc' } },
       },
       orderBy: { date: 'desc' },
     });
@@ -162,6 +246,7 @@ export const getEvents = async (req: Request, res: Response) => {
       include: {
         characters: { include: { character: true } },
         missions: missionsInclude,
+        levelEscalations: { include: { triggeredMission: true }, orderBy: { createdAt: 'desc' } },
       },
       orderBy: { date: 'desc' },
     });
@@ -189,6 +274,7 @@ export const getEvent = async (req: Request, res: Response) => {
     include: {
       characters: { include: { character: true } },
       missions: missionsInclude,
+      levelEscalations: { include: { triggeredMission: true }, orderBy: { createdAt: 'desc' } },
     },
   });
   if (!event) {
@@ -273,6 +359,15 @@ export const updateEvent = async (req: Request, res: Response) => {
 
     const eventId = Number(id);
 
+    const existingEvent = await prisma.event.findUnique({
+      where: { id: eventId },
+      include: { characters: true, missions: true },
+    });
+
+    if (!existingEvent) {
+      return res.status(404).json({ message: '事件不存在' });
+    }
+
     if (characterIds && characterIds.length > 0) {
       const validation = await validateCharacterIdsAssignable(characterIds);
       if (!validation.valid) {
@@ -295,14 +390,20 @@ export const updateEvent = async (req: Request, res: Response) => {
     } else if (characterIds && characterIds.length > 0) {
       finalStatus = '处置中';
     } else if (!finalStatus) {
-      const existingEvent = await prisma.event.findUnique({ where: { id: eventId } });
-      finalStatus = existingEvent?.disposalStatus || '待处置';
+      finalStatus = existingEvent.disposalStatus || '待处置';
     }
 
     const roleMap = new Map<number, any>();
     if (characterRoles) {
       characterRoles.forEach((cr) => roleMap.set(cr.characterId, cr));
     }
+
+    const oldLevel = existingEvent.level;
+    const newLevel = data.level;
+    const oldResult = existingEvent.result || null;
+    const newResult = data.result || null;
+    const levelEscalated = isLevelEscalated(oldLevel, newLevel);
+    const resultWorsened = isResultWorsened(oldResult, newResult);
 
     const event = await prisma.event.update({
       where: { id: eventId },
@@ -328,9 +429,40 @@ export const updateEvent = async (req: Request, res: Response) => {
       include: { 
         characters: { include: { character: true } },
         missions: true,
+        levelEscalations: { include: { triggeredMission: true }, orderBy: { createdAt: 'desc' } },
       },
     });
-    res.json(event);
+
+    let escalationResult: { mission: any; escalation: any } | null = null;
+    if (levelEscalated || resultWorsened) {
+      escalationResult = await handleLevelEscalation(
+        eventId,
+        oldLevel,
+        newLevel,
+        oldResult,
+        newResult,
+        existingEvent.title
+      );
+
+      if (escalationResult && existingEvent.disposalStatus !== '处置中') {
+        await prisma.event.update({
+          where: { id: eventId },
+          data: { disposalStatus: '处置中' },
+        });
+      }
+    }
+
+    res.json({
+      ...event,
+      _escalation: escalationResult ? {
+        triggered: true,
+        reason: escalationResult.escalation.reason,
+        missionId: escalationResult.mission.id,
+        missionTitle: escalationResult.mission.title,
+        oldLevel,
+        newLevel,
+      } : undefined,
+    });
   } catch (error) {
     console.error(error);
     res.status(400).json({ message: '更新失败' });
@@ -528,5 +660,114 @@ export const checkDuplicateEvents = async (req: Request, res: Response) => {
   } catch (error) {
     console.error(error);
     res.status(400).json({ message: '检查重复事件失败' });
+  }
+};
+
+export const getEscalations = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (user?.role !== 'admin') {
+      return res.status(403).json({ message: '仅管理员可查看升级记录' });
+    }
+
+    const escalations = await prisma.levelEscalation.findMany({
+      include: {
+        event: {
+          include: {
+            characters: { include: { character: true } },
+          },
+        },
+        triggeredMission: {
+          include: {
+            characters: { include: { character: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json(escalations);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: '获取升级记录失败' });
+  }
+};
+
+export const getRiskStats = async (_req: Request, res: Response) => {
+  try {
+    const [
+      totalEvents,
+      pendingEvents,
+      escalatedEvents,
+      recentEscalations,
+      highRiskEvents,
+      totalMissions,
+      highPriorityMissions,
+    ] = await Promise.all([
+      prisma.event.count(),
+      prisma.event.count({
+        where: { disposalStatus: { in: ['待处置', '处置中'] } },
+      }),
+      prisma.event.count({
+        where: { levelEscalations: { some: {} } },
+      }),
+      prisma.levelEscalation.findMany({
+        where: {
+          createdAt: {
+            gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+          },
+        },
+        include: {
+          event: { select: { id: true, title: true, level: true, disposalStatus: true } },
+          triggeredMission: { select: { id: true, title: true, status: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      }),
+      prisma.event.count({
+        where: {
+          level: { in: ['S级', 'A级'] },
+          disposalStatus: { notIn: ['已完成', '已取消'] },
+        },
+      }),
+      prisma.mission.count({
+        where: { status: { in: ['待处理', '进行中'] } },
+      }),
+      prisma.mission.count({
+        where: {
+          priority: '高',
+          status: { in: ['待处理', '进行中'] },
+        },
+      }),
+    ]);
+
+    const levelDistribution = await prisma.event.groupBy({
+      by: ['level'],
+      _count: { level: true },
+      where: { disposalStatus: { notIn: ['已取消'] } },
+    });
+
+    const riskLevel = highRiskEvents > 0 ? '高危'
+      : escalatedEvents > 0 ? '警戒'
+      : pendingEvents > 3 ? '关注'
+      : '平稳';
+
+    res.json({
+      totalEvents,
+      pendingEvents,
+      escalatedEvents,
+      highRiskEvents,
+      activeMissions: totalMissions,
+      highPriorityMissions,
+      riskLevel,
+      recentEscalations,
+      levelDistribution: levelDistribution.map((item) => ({
+        level: item.level,
+        count: item._count.level,
+      })),
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: '获取风险统计失败' });
   }
 };

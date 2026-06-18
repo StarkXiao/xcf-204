@@ -62,6 +62,8 @@ export interface Event {
   updatedAt: string;
   characters?: EventCharacter[];
   missions?: Mission[];
+  levelEscalations?: LevelEscalation[];
+  _escalation?: EscalationNotice;
 }
 
 export interface Mission {
@@ -220,4 +222,62 @@ export interface BatchOperationResponse<T> {
   message: string;
   batchId: string;
   results: T[];
+}
+
+export interface LevelEscalation {
+  id: number;
+  eventId: number;
+  oldLevel: string;
+  newLevel: string;
+  oldResult?: string | null;
+  newResult?: string | null;
+  reason: string;
+  triggeredMissionId?: number | null;
+  triggeredMission?: Mission;
+  createdAt: string;
+}
+
+export interface EscalationNotice {
+  triggered: boolean;
+  reason: string;
+  missionId: number;
+  missionTitle: string;
+  oldLevel: string;
+  newLevel: string;
+}
+
+export interface RiskStats {
+  totalEvents: number;
+  pendingEvents: number;
+  escalatedEvents: number;
+  highRiskEvents: number;
+  activeMissions: number;
+  highPriorityMissions: number;
+  riskLevel: '高危' | '警戒' | '关注' | '平稳';
+  recentEscalations: Array<{
+    id: number;
+    eventId: number;
+    oldLevel: string;
+    newLevel: string;
+    oldResult?: string | null;
+    newResult?: string | null;
+    reason: string;
+    triggeredMissionId?: number | null;
+    createdAt: string;
+    event: {
+      id: number;
+      title: string;
+      level: string;
+      disposalStatus: string;
+    };
+    triggeredMission?: {
+      id: number;
+      title: string;
+      status: string;
+    };
+  }>;
+  levelDistribution: Array<{
+    level: string;
+    count: number;
+  }>;
 }

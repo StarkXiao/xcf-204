@@ -256,14 +256,20 @@ const EventsPage = () => {
 
   const submitEvent = async () => {
     try {
+      let response;
       if (editingEvent) {
-        await eventAPI.update(editingEvent.id, formData);
+        response = await eventAPI.update(editingEvent.id, formData);
       } else {
-        await eventAPI.create(formData);
+        response = await eventAPI.create(formData);
       }
       setModalOpen(false);
       setDuplicateModalOpen(false);
       loadData();
+      if (response._escalation) {
+        alert(
+          `⚠️ 等级升级触发！\n${response._escalation.reason}\n已自动创建高优先级应急任务：${response._escalation.missionTitle}`
+        );
+      }
     } catch (err: any) {
       alert(err.response?.data?.message || '操作失败');
     }
@@ -378,6 +384,9 @@ const EventsPage = () => {
                   <h3 className="text-xl font-bold">{event.title}</h3>
                   <Badge color={typeColors[event.type] || 'gray'}>{event.type}</Badge>
                   <Badge color={levelColors[event.level] || 'gray'}>{event.level}</Badge>
+                  {event.levelEscalations && event.levelEscalations.length > 0 && (
+                    <Badge color="red">⚠️ 已升级</Badge>
+                  )}
                   <Badge color={disposalStatusColors[event.disposalStatus] || 'gray'}>
                     {event.disposalStatus}
                   </Badge>
@@ -605,6 +614,9 @@ const EventsPage = () => {
                 <h2 className="text-2xl font-bold">{selectedEvent.title}</h2>
                 <Badge color={typeColors[selectedEvent.type] || 'gray'}>{selectedEvent.type}</Badge>
                 <Badge color={levelColors[selectedEvent.level] || 'gray'}>{selectedEvent.level}</Badge>
+                {selectedEvent.levelEscalations && selectedEvent.levelEscalations.length > 0 && (
+                  <Badge color="red">⚠️ 已升级</Badge>
+                )}
                 <Badge color={disposalStatusColors[selectedEvent.disposalStatus] || 'gray'}>
                   {selectedEvent.disposalStatus}
                 </Badge>
@@ -725,6 +737,57 @@ const EventsPage = () => {
                   <pre className="text-sm text-[var(--text-secondary)] whitespace-pre-wrap font-sans">
                     {selectedEvent.disposalConclusion}
                   </pre>
+                </div>
+              </div>
+            )}
+
+            {selectedEvent.levelEscalations && selectedEvent.levelEscalations.length > 0 && (
+              <div className="border-t border-[var(--border)] pt-4">
+                <h3 className="font-medium mb-3 flex items-center gap-2">
+                  <span>⚠️</span> 等级升级记录 ({selectedEvent.levelEscalations.length})
+                </h3>
+                <div className="space-y-3 max-h-64 overflow-y-auto">
+                  {selectedEvent.levelEscalations.map((esc) => (
+                    <div
+                      key={esc.id}
+                      className="bg-red-500/5 border border-red-500/20 rounded-lg p-3"
+                    >
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
+                        <Badge color="red" className="text-xs">等级升级</Badge>
+                        <Badge color={levelColors[esc.oldLevel] || 'gray'} className="text-xs">
+                          {esc.oldLevel}
+                        </Badge>
+                        <span className="text-[var(--text-secondary)] text-xs">→</span>
+                        <Badge color={levelColors[esc.newLevel] || 'gray'} className="text-xs">
+                          {esc.newLevel}
+                        </Badge>
+                        {esc.oldResult && esc.newResult && esc.oldResult !== esc.newResult && (
+                          <>
+                            <span className="text-[var(--text-secondary)] text-xs mx-1">|</span>
+                            <span className="text-xs text-[var(--text-secondary)]">
+                              结果: {esc.oldResult} → {esc.newResult}
+                            </span>
+                          </>
+                        )}
+                        <span className="text-xs text-[var(--text-secondary)] ml-auto">
+                          {new Date(esc.createdAt).toLocaleString('zh-CN')}
+                        </span>
+                      </div>
+                      <p className="text-sm text-[var(--text-secondary)] mb-1">{esc.reason}</p>
+                      {esc.triggeredMission && (
+                        <div
+                          className="mt-2 text-xs bg-[var(--bg-tertiary)] rounded p-2 cursor-pointer hover:bg-[var(--border)] transition-colors"
+                          onClick={() => goToMissionDetail(esc.triggeredMission!.id)}
+                        >
+                          <span className="text-[var(--text-secondary)]">自动触发任务：</span>
+                          <span className="text-[var(--accent-primary)] font-medium">{esc.triggeredMission.title}</span>
+                          <Badge color={missionStatusColors[esc.triggeredMission.status] || 'gray'} className="text-xs ml-2">
+                            {esc.triggeredMission.status}
+                          </Badge>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
