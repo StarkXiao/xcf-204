@@ -281,3 +281,35 @@ export interface RiskStats {
     count: number;
   }>;
 }
+
+export interface Collaborator {
+  character: {
+    id: number;
+    name: string;
+    codeName?: string | null;
+    avatar?: string | null;
+    level: string;
+    ability: string;
+    status: string;
+  };
+  sharedEvents: number;
+  sharedMissions: number;
+  eventIds: number[];
+  missionIds: number[];
+  totalCollaborations: number;
+}
+
+export interface CollaborationNetwork {
+  character: {
+    id: number;
+    name: string;
+    codeName?: string | null;
+    avatar?: string | null;
+    level: string;
+    ability: string;
+  };
+  totalEvents: number;
+  totalMissions: number;
+  totalCollaborators: number;
+  collaborators: Collaborator[];
+}

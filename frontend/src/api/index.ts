@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Character, Event, Mission, LoginResponse, Worldview, LevelHistory, EventCharacter, MissionExtensionRequest, DuplicateCheckResponse, MissionChangeLog, BatchAssignResult, BatchPriorityResult, BatchDueDateResult, BatchOperationResponse, RiskStats, LevelEscalation } from '../types';
+import { Character, Event, Mission, LoginResponse, Worldview, LevelHistory, EventCharacter, MissionExtensionRequest, DuplicateCheckResponse, MissionChangeLog, BatchAssignResult, BatchPriorityResult, BatchDueDateResult, BatchOperationResponse, RiskStats, LevelEscalation, CollaborationNetwork } from '../types';
 
 const api = axios.create({
   baseURL: '/api',
@@ -33,6 +33,8 @@ export const characterAPI = {
     api.get<LevelHistory[]>(`/characters/${characterId}/level-histories`).then((res) => res.data),
   createLevelHistory: (characterId: number, data: Omit<LevelHistory, 'id' | 'characterId' | 'createdAt' | 'event' | 'mission'>) =>
     api.post<LevelHistory>(`/characters/${characterId}/level-histories`, data).then((res) => res.data),
+  getCollaborationNetwork: (characterId: number) =>
+    api.get<CollaborationNetwork>(`/characters/${characterId}/collaboration-network`).then((res) => res.data),
 };
 
 export const eventAPI = {

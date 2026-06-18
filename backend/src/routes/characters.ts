@@ -7,6 +7,7 @@ import {
   deleteCharacter,
   getLevelHistories,
   createLevelHistory,
+  getCollaborationNetwork,
 } from '../controllers/characterController';
 import { authenticate, requireAdmin } from '../middleware/auth';
 
@@ -20,5 +21,7 @@ router.delete('/:id', authenticate, requireAdmin, deleteCharacter);
 
 router.get('/:characterId/level-histories', authenticate, getLevelHistories);
 router.post('/:characterId/level-histories', authenticate, requireAdmin, createLevelHistory);
+
+router.get('/:characterId/collaboration-network', authenticate, getCollaborationNetwork);
 
 export default router;

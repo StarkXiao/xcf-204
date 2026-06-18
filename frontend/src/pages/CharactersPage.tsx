@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { characterAPI, eventAPI, missionAPI } from '../api';
-import { Character, Event, Mission, LevelHistory } from '../types';
+import { Character, Event, Mission, LevelHistory, CollaborationNetwork } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import Modal from '../components/Modal';
 import { Button, InputField, SelectField, TextareaField } from '../components/FormField';
@@ -33,9 +33,12 @@ const CharactersPage = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [growthModalOpen, setGrowthModalOpen] = useState(false);
+  const [collaborationModalOpen, setCollaborationModalOpen] = useState(false);
   const [selectedChar, setSelectedChar] = useState<Character | null>(null);
   const [editingChar, setEditingChar] = useState<Character | null>(null);
   const [levelHistories, setLevelHistories] = useState<LevelHistory[]>([]);
+  const [collaborationNetwork, setCollaborationNetwork] = useState<CollaborationNetwork | null>(null);
+  const [collaborationLoading, setCollaborationLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     codeName: '',
@@ -102,6 +105,20 @@ const CharactersPage = () => {
       setLevelHistories([]);
       setGrowthModalOpen(true);
     }
+  };
+
+  const openCollaborationNetwork = async (char: Character) => {
+    setCollaborationLoading(true);
+    setCollaborationNetwork(null);
+    try {
+      const network = await characterAPI.getCollaborationNetwork(char.id);
+      setCollaborationNetwork(network);
+    } catch (err) {
+      console.error('获取协作关系网络失败', err);
+    } finally {
+      setCollaborationLoading(false);
+    }
+    setCollaborationModalOpen(true);
   };
 
   const buildTimeline = (charId: number): TimelineItem[] => {
@@ -601,17 +618,28 @@ const CharactersPage = () => {
             </div>
 
             <div className="pt-4 border-t border-[var(--border)]">
-              <Button
-                variant="secondary"
-                className="w-full"
-                onClick={() => {
-                  if (selectedChar) {
-                    openGrowthTrail(selectedChar);
-                  }
-                }}
-              >
-                📈 查看成长轨迹
-              </Button>
+              <div className="grid grid-cols-2 gap-3">
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    if (selectedChar) {
+                      openGrowthTrail(selectedChar);
+                    }
+                  }}
+                >
+                  📈 成长轨迹
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    if (selectedChar) {
+                      openCollaborationNetwork(selectedChar);
+                    }
+                  }}
+                >
+                  🤝 协作网络
+                </Button>
+              </div>
             </div>
 
             {isAdmin && (
@@ -838,6 +866,165 @@ const CharactersPage = () => {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={collaborationModalOpen}
+        onClose={() => setCollaborationModalOpen(false)}
+        title="协作关系网络"
+        size="large"
+      >
+        {collaborationLoading ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin w-12 h-12 border-4 border-[var(--accent-primary)] border-t-transparent rounded-full"></div>
+          </div>
+        ) : collaborationNetwork ? (
+          <div className="space-y-6">
+            <div className="flex items-center gap-4 pb-4 border-b border-[var(--border)]">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-secondary)] flex items-center justify-center text-3xl shrink-0">
+                {collaborationNetwork.character.avatar || '👤'}
+              </div>
+              <div className="flex-1">
+                <h2 className="text-xl font-bold">{collaborationNetwork.character.name}</h2>
+                <p className="text-[var(--text-secondary)]">
+                  {collaborationNetwork.character.ability} · 
+                  <Badge color={levelColors[collaborationNetwork.character.level] || 'gray'} className="ml-2">
+                    {collaborationNetwork.character.level}
+                  </Badge>
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-[var(--bg-tertiary)] rounded-xl p-4 text-center">
+                <p className="text-3xl font-bold text-blue-400">{collaborationNetwork.totalEvents}</p>
+                <p className="text-sm text-[var(--text-secondary)] mt-1">参与事件</p>
+              </div>
+              <div className="bg-[var(--bg-tertiary)] rounded-xl p-4 text-center">
+                <p className="text-3xl font-bold text-yellow-400">{collaborationNetwork.totalMissions}</p>
+                <p className="text-sm text-[var(--text-secondary)] mt-1">执行任务</p>
+              </div>
+              <div className="bg-[var(--bg-tertiary)] rounded-xl p-4 text-center">
+                <p className="text-3xl font-bold text-green-400">{collaborationNetwork.totalCollaborators}</p>
+                <p className="text-sm text-[var(--text-secondary)] mt-1">合作伙伴</p>
+              </div>
+            </div>
+
+            <div className="border-t border-[var(--border)] pt-4">
+              <h3 className="font-medium mb-4 flex items-center gap-2">
+                <span>🤝</span> 常合作角色
+              </h3>
+              
+              {collaborationNetwork.collaborators.length === 0 ? (
+                <div className="text-center py-12 text-[var(--text-secondary)]">
+                  <p className="text-4xl mb-4">🕵️</p>
+                  <p>暂无合作记录</p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2">
+                  {collaborationNetwork.collaborators.map((collab, index) => {
+                    const maxCollabs = collaborationNetwork.collaborators[0]?.totalCollaborations || 1;
+                    const intensity = (collab.totalCollaborations / maxCollabs) * 100;
+                    
+                    return (
+                      <div
+                        key={collab.character.id}
+                        className="bg-[var(--bg-tertiary)] rounded-xl p-4 hover:bg-[var(--border)] transition-colors cursor-pointer"
+                        onClick={() => {
+                          const char = characters.find((c) => c.id === collab.character.id);
+                          if (char) {
+                            setCollaborationModalOpen(false);
+                            setSelectedChar(char);
+                            setDetailModalOpen(true);
+                          }
+                        }}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="relative">
+                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[var(--accent-primary)] to-[var(--accent-secondary)] flex items-center justify-center text-xl">
+                              {collab.character.avatar || '👤'}
+                            </div>
+                            {index < 3 && (
+                              <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-yellow-500 flex items-center justify-center text-xs font-bold text-black">
+                                {index + 1}
+                              </div>
+                            )}
+                          </div>
+                          
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h4 className="font-medium truncate">{collab.character.name}</h4>
+                              {collab.character.codeName && (
+                                <span className="text-xs text-[var(--text-secondary)] truncate">
+                                  「{collab.character.codeName}」
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-[var(--text-secondary)] truncate">
+                              {collab.character.ability}
+                            </p>
+                          </div>
+                          
+                          <div className="flex items-center gap-3 shrink-0">
+                            <Badge color={levelColors[collab.character.level] || 'gray'}>
+                              {collab.character.level}
+                            </Badge>
+                          </div>
+                        </div>
+                        
+                        <div className="mt-3 space-y-2">
+                          <div className="flex items-center gap-3 text-sm">
+                            <div className="flex items-center gap-1 text-blue-400">
+                              <span>📋</span>
+                              <span>{collab.sharedEvents} 次共同事件</span>
+                            </div>
+                            <div className="flex items-center gap-1 text-yellow-400">
+                              <span>📅</span>
+                              <span>{collab.sharedMissions} 次共同任务</span>
+                            </div>
+                            <div className="flex items-center gap-1 text-green-400 ml-auto">
+                              <span>🤝</span>
+                              <span className="font-bold">{collab.totalCollaborations} 次总合作</span>
+                            </div>
+                          </div>
+                          
+                          <div className="h-2 bg-[var(--bg-secondary)] rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-[var(--accent-primary)] to-[var(--accent-secondary)] rounded-full transition-all duration-500"
+                              style={{ width: `${intensity}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="pt-4 border-t border-[var(--border)]">
+              <div className="flex flex-wrap gap-4 justify-center text-sm text-[var(--text-secondary)]">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-blue-400"></div>
+                  <span>共同事件</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
+                  <span>共同任务</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-full h-2 bg-gradient-to-r from-[var(--accent-primary)] to-[var(--accent-secondary)] rounded-full" style={{ width: '40px' }}></div>
+                  <span>合作强度</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-12 text-[var(--text-secondary)]">
+            <p className="text-4xl mb-4">❌</p>
+            <p>加载失败</p>
           </div>
         )}
       </Modal>
