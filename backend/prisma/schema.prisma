@@ -8,13 +8,14 @@ datasource db {
 }
 
 model User {
-  id          Int       @id @default(autoincrement())
-  username    String    @unique
-  password    String
-  role        String    @default("user")
-  characterId Int?      @unique
-  character   Character? @relation(fields: [characterId], references: [id])
-  createdAt   DateTime  @default(now())
+  id               Int                @id @default(autoincrement())
+  username         String             @unique
+  password         String
+  role             String             @default("user")
+  characterId      Int?               @unique
+  character        Character?         @relation(fields: [characterId], references: [id])
+  missionChangeLogs MissionChangeLog[]
+  createdAt        DateTime           @default(now())
 }
 
 model Character {
@@ -69,6 +70,7 @@ model Mission {
   characters            MissionCharacter[]
   levelHistories        LevelHistory[]
   extensionRequests     MissionExtensionRequest[]
+  changeLogs            MissionChangeLog[]
 }
 
 model EventCharacter {
@@ -125,4 +127,19 @@ model MissionExtensionRequest {
   approvedAt      DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+}
+
+model MissionChangeLog {
+  id          Int      @id @default(autoincrement())
+  missionId   Int
+  mission     Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  userId      Int?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  actionType  String
+  fieldName   String?
+  oldValue    String?
+  newValue    String?
+  description String?
+  batchId     String?
+  createdAt   DateTime @default(now())
 }

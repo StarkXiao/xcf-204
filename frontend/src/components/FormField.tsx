@@ -53,9 +53,11 @@ export const TextareaField = ({ label, ...props }: TextareaProps) => (
 export const Button = ({
   children,
   variant = 'primary',
+  size = 'md',
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: 'primary' | 'danger' | 'secondary';
+  size?: 'sm' | 'md';
 }) => {
   const variants = {
     primary: 'bg-[var(--accent-primary)] hover:bg-[var(--accent-secondary)] text-white shadow-lg shadow-[var(--accent-glow)]',
@@ -63,10 +65,15 @@ export const Button = ({
     secondary: 'bg-[var(--bg-tertiary)] hover:bg-[var(--border)] text-white border border-[var(--border)]',
   };
 
+  const sizes = {
+    sm: 'px-3 py-1.5 text-sm',
+    md: 'px-6 py-3',
+  };
+
   return (
     <button
       {...props}
-      className={`px-6 py-3 rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed ${variants[variant]}`}
+      className={`${sizes[size]} rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed ${variants[variant]}`}
     >
       {children}
     </button>

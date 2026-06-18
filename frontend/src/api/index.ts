@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Character, Event, Mission, LoginResponse, Worldview, LevelHistory, EventCharacter, MissionExtensionRequest, DuplicateCheckResponse } from '../types';
+import { Character, Event, Mission, LoginResponse, Worldview, LevelHistory, EventCharacter, MissionExtensionRequest, DuplicateCheckResponse, MissionChangeLog, BatchAssignResult, BatchPriorityResult, BatchDueDateResult, BatchOperationResponse } from '../types';
 
 const api = axios.create({
   baseURL: '/api',
@@ -59,6 +59,13 @@ export const missionAPI = {
   create: (data: any) => api.post<Mission>('/missions', data).then((res) => res.data),
   update: (id: number, data: any) => api.put<Mission>(`/missions/${id}`, data).then((res) => res.data),
   delete: (id: number) => api.delete(`/missions/${id}`).then((res) => res.data),
+  getChangeLogs: (id: number) => api.get<MissionChangeLog[]>(`/missions/${id}/change-logs`).then((res) => res.data),
+  batchAssignCharacters: (data: { missionIds: number[]; characterIds: number[]; replaceExisting?: boolean }) =>
+    api.post<BatchOperationResponse<BatchAssignResult>>('/missions/batch/assign', data).then((res) => res.data),
+  batchUpdatePriority: (data: { missionIds: number[]; priority: string }) =>
+    api.post<BatchOperationResponse<BatchPriorityResult>>('/missions/batch/priority', data).then((res) => res.data),
+  batchUpdateDueDate: (data: { missionIds: number[]; dueDate: string }) =>
+    api.post<BatchOperationResponse<BatchDueDateResult>>('/missions/batch/due-date', data).then((res) => res.data),
 };
 
 export const missionExtensionAPI = {

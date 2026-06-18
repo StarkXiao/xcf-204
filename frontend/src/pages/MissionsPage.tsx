@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { missionAPI, characterAPI, eventAPI, missionExtensionAPI } from '../api';
-import { Mission, Character, Event, MissionExtensionRequest, isAssignableStatus } from '../types';
+import { Mission, Character, Event, MissionExtensionRequest, isAssignableStatus, MissionChangeLog } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import Modal from '../components/Modal';
 import { Button, InputField, SelectField, TextareaField } from '../components/FormField';
@@ -21,6 +21,19 @@ const MissionsPage = () => {
   const [selectedMission, setSelectedMission] = useState<Mission | null>(null);
   const [editingMission, setEditingMission] = useState<Mission | null>(null);
   const [levelUpChar, setLevelUpChar] = useState<Character | null>(null);
+  const [selectedMissionIds, setSelectedMissionIds] = useState<Set<number>>(new Set());
+  const [batchAssignModalOpen, setBatchAssignModalOpen] = useState(false);
+  const [batchPriorityModalOpen, setBatchPriorityModalOpen] = useState(false);
+  const [batchDueDateModalOpen, setBatchDueDateModalOpen] = useState(false);
+  const [changeLogs, setChangeLogs] = useState<MissionChangeLog[]>([]);
+  const [showChangeLogs, setShowChangeLogs] = useState(false);
+  const [batchAssignForm, setBatchAssignForm] = useState({
+    characterIds: [] as number[],
+    replaceExisting: false,
+  });
+  const [batchPriorityForm, setBatchPriorityForm] = useState({ priority: '中' });
+  const [batchDueDateForm, setBatchDueDateForm] = useState({ dueDate: '' });
+  const [batchLoading, setBatchLoading] = useState(false);
   const [levelUpForm, setLevelUpForm] = useState({
     newLevel: '',
     reason: '',
@@ -81,8 +94,128 @@ const MissionsPage = () => {
   const closeDetailModal = () => {
     setDetailModalOpen(false);
     setSelectedMission(null);
+    setShowChangeLogs(false);
     searchParams.delete('missionId');
     setSearchParams(searchParams);
+  };
+
+  const toggleMissionSelection = (missionId: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newSet = new Set(selectedMissionIds);
+    if (newSet.has(missionId)) {
+      newSet.delete(missionId);
+    } else {
+      newSet.add(missionId);
+    }
+    setSelectedMissionIds(newSet);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedMissionIds.size === filteredMissions.length) {
+      setSelectedMissionIds(new Set());
+    } else {
+      setSelectedMissionIds(new Set(filteredMissions.map((m) => m.id)));
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedMissionIds(new Set());
+  };
+
+  const openBatchAssignModal = () => {
+    setBatchAssignForm({ characterIds: [], replaceExisting: false });
+    setBatchAssignModalOpen(true);
+  };
+
+  const openBatchPriorityModal = () => {
+    setBatchPriorityForm({ priority: '中' });
+    setBatchPriorityModalOpen(true);
+  };
+
+  const openBatchDueDateModal = () => {
+    const nextWeek = new Date();
+    nextWeek.setDate(nextWeek.getDate() + 7);
+    setBatchDueDateForm({ dueDate: nextWeek.toISOString().split('T')[0] });
+    setBatchDueDateModalOpen(true);
+  };
+
+  const handleBatchAssign = async () => {
+    if (batchAssignForm.characterIds.length === 0) {
+      alert('请至少选择一个角色');
+      return;
+    }
+    setBatchLoading(true);
+    try {
+      const result = await missionAPI.batchAssignCharacters({
+        missionIds: Array.from(selectedMissionIds),
+        characterIds: batchAssignForm.characterIds,
+        replaceExisting: batchAssignForm.replaceExisting,
+      });
+      alert(result.message);
+      setBatchAssignModalOpen(false);
+      clearSelection();
+      loadData();
+    } catch (err: any) {
+      alert(err.response?.data?.message || '批量操作失败');
+    } finally {
+      setBatchLoading(false);
+    }
+  };
+
+  const handleBatchPriority = async () => {
+    setBatchLoading(true);
+    try {
+      const result = await missionAPI.batchUpdatePriority({
+        missionIds: Array.from(selectedMissionIds),
+        priority: batchPriorityForm.priority,
+      });
+      alert(result.message);
+      setBatchPriorityModalOpen(false);
+      clearSelection();
+      loadData();
+    } catch (err: any) {
+      alert(err.response?.data?.message || '批量操作失败');
+    } finally {
+      setBatchLoading(false);
+    }
+  };
+
+  const handleBatchDueDate = async () => {
+    if (!batchDueDateForm.dueDate) {
+      alert('请选择截止日期');
+      return;
+    }
+    setBatchLoading(true);
+    try {
+      const result = await missionAPI.batchUpdateDueDate({
+        missionIds: Array.from(selectedMissionIds),
+        dueDate: batchDueDateForm.dueDate,
+      });
+      alert(result.message);
+      setBatchDueDateModalOpen(false);
+      clearSelection();
+      loadData();
+    } catch (err: any) {
+      alert(err.response?.data?.message || '批量操作失败');
+    } finally {
+      setBatchLoading(false);
+    }
+  };
+
+  const loadChangeLogs = async (missionId: number) => {
+    try {
+      const logs = await missionAPI.getChangeLogs(missionId);
+      setChangeLogs(logs);
+    } catch (err) {
+      console.error('加载变更日志失败', err);
+    }
+  };
+
+  const toggleShowChangeLogs = async () => {
+    if (selectedMission && !showChangeLogs) {
+      await loadChangeLogs(selectedMission.id);
+    }
+    setShowChangeLogs(!showChangeLogs);
   };
 
   const goToCharacterDetail = (characterId: number) => {
@@ -445,6 +578,63 @@ const MissionsPage = () => {
         </div>
       </div>
 
+      {isAdmin && viewMode === 'list' && (
+        <div className={`border rounded-2xl p-4 mb-6 transition-all ${selectedMissionIds.size > 0 ? 'bg-[var(--accent-primary)]/10 border-[var(--accent-primary)]' : 'bg-[var(--bg-secondary)] border-[var(--border)]'}`}>
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={selectedMissionIds.size === filteredMissions.length && filteredMissions.length > 0}
+                onChange={toggleSelectAll}
+                className="w-4 h-4 rounded accent-[var(--accent-primary)]"
+              />
+              <span className="text-sm font-medium">
+                {selectedMissionIds.size > 0
+                  ? `已选择 ${selectedMissionIds.size} 个任务`
+                  : '全选'}
+              </span>
+            </div>
+            {selectedMissionIds.size > 0 && (
+              <>
+                <div className="h-6 w-px bg-[var(--border)]" />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={openBatchAssignModal}
+                  disabled={batchLoading}
+                >
+                  👥 批量指派角色
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={openBatchPriorityModal}
+                  disabled={batchLoading}
+                >
+                  ⚡ 调整优先级
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={openBatchDueDateModal}
+                  disabled={batchLoading}
+                >
+                  📅 修改截止日期
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={clearSelection}
+                  disabled={batchLoading}
+                >
+                  取消选择
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {viewMode === 'calendar' && (
         <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl p-6 mb-6">
           <div className="flex items-center justify-between mb-6">
@@ -530,10 +720,28 @@ const MissionsPage = () => {
           filteredMissions.map((mission) => (
           <div
             key={mission.id}
-            className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl p-6 hover:border-[var(--accent-primary)] transition-colors cursor-pointer"
+            className={`bg-[var(--bg-secondary)] border rounded-2xl p-6 hover:border-[var(--accent-primary)] transition-colors cursor-pointer ${selectedMissionIds.has(mission.id) ? 'border-[var(--accent-primary)] ring-2 ring-[var(--accent-primary)]/30' : 'border-[var(--border)]'}`}
             onClick={() => openDetail(mission)}
           >
             <div className="flex items-start justify-between gap-6">
+              {isAdmin && viewMode === 'list' && (
+                <div className="flex-shrink-0 mt-1" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selectedMissionIds.has(mission.id)}
+                    onChange={(e) => {
+                      const newSet = new Set(selectedMissionIds);
+                      if (e.target.checked) {
+                        newSet.add(mission.id);
+                      } else {
+                        newSet.delete(mission.id);
+                      }
+                      setSelectedMissionIds(newSet);
+                    }}
+                    className="w-5 h-5 rounded accent-[var(--accent-primary)] cursor-pointer"
+                  />
+                </div>
+              )}
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-3">
                   <h3 className="text-xl font-bold">{mission.title}</h3>
@@ -870,6 +1078,12 @@ const MissionsPage = () => {
                   📅 申请延期
                 </Button>
               )}
+              <Button
+                variant={showChangeLogs ? 'primary' : 'secondary'}
+                onClick={toggleShowChangeLogs}
+              >
+                📋 {showChangeLogs ? '隐藏变更日志' : '查看变更日志'}
+              </Button>
               {isAdmin && (
                 <>
                   <Button
@@ -897,6 +1111,63 @@ const MissionsPage = () => {
                 </>
               )}
             </div>
+
+            {showChangeLogs && (
+              <div className="border-t border-[var(--border)] pt-4 mt-4">
+                <h3 className="font-medium mb-3 flex items-center gap-2">
+                  <span>📝</span> 变更操作日志
+                </h3>
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {changeLogs.length === 0 ? (
+                    <p className="text-sm text-[var(--text-secondary)] py-4 text-center">暂无变更记录</p>
+                  ) : (
+                    changeLogs.map((log) => (
+                      <div key={log.id} className="bg-[var(--bg-tertiary)] rounded-lg p-3 text-sm">
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            {log.user?.character?.avatar && (
+                              <span>{log.user.character.avatar}</span>
+                            )}
+                            <span className="font-medium">
+                              {log.user?.character?.name || log.user?.username || '系统'}
+                            </span>
+                            <Badge color={
+                              log.actionType.includes('ASSIGN') ? 'purple' :
+                              log.actionType.includes('PRIORITY') ? 'yellow' :
+                              log.actionType.includes('DUEDATE') ? 'blue' : 'gray'
+                            } className="text-xs">
+                              {log.actionType.includes('BATCH') ? '批量' : ''}
+                              {log.actionType.includes('ASSIGN') ? '指派' :
+                               log.actionType.includes('PRIORITY') ? '优先级' :
+                               log.actionType.includes('DUEDATE') ? '截止日期' : log.actionType}
+                            </Badge>
+                          </div>
+                          <span className="text-xs text-[var(--text-secondary)]">
+                            {new Date(log.createdAt).toLocaleString('zh-CN')}
+                          </span>
+                        </div>
+                        {log.description && (
+                          <p className="text-[var(--text-secondary)]">{log.description}</p>
+                        )}
+                        {!log.description && log.fieldName && (
+                          <p className="text-[var(--text-secondary)]">
+                            字段 <code className="bg-[var(--bg-primary)] px-1 rounded">{log.fieldName}</code>: 
+                            {log.oldValue && <span className="line-through ml-1">{log.oldValue}</span>}
+                            {log.oldValue && log.newValue && <span className="mx-2">→</span>}
+                            {log.newValue && <span className="text-[var(--accent-primary)] ml-1">{log.newValue}</span>}
+                          </p>
+                        )}
+                        {log.batchId && (
+                          <p className="text-xs text-[var(--text-secondary)] mt-1">
+                            批次ID: {log.batchId}
+                          </p>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </Modal>
@@ -1119,6 +1390,203 @@ const MissionsPage = () => {
             </div>
           </form>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={batchAssignModalOpen}
+        onClose={() => setBatchAssignModalOpen(false)}
+        title={`批量指派角色 (${selectedMissionIds.size} 个任务)`}
+      >
+        <div className="space-y-4">
+          <div className="bg-[var(--bg-tertiary)] rounded-xl p-4">
+            <p className="text-sm text-[var(--text-secondary)] mb-1">将对以下任务进行操作</p>
+            <p className="font-medium">
+              {missions
+                .filter((m) => selectedMissionIds.has(m.id))
+                .map((m) => m.title)
+                .join('、')}
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">选择角色</label>
+            <div className="mb-2 text-xs text-[var(--text-secondary)]">
+              💡 提示：只有"出勤中"和"待命"状态的角色可被指派任务
+            </div>
+            <div className="flex flex-wrap gap-2 max-h-64 overflow-y-auto">
+              {characters.map((char) => {
+                const assignable = isAssignableStatus(char.status);
+                return (
+                  <label
+                    key={char.id}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                      !assignable
+                        ? 'bg-gray-700/30 text-gray-500 cursor-not-allowed line-through'
+                        : batchAssignForm.characterIds.includes(char.id)
+                        ? 'bg-[var(--accent-primary)] text-white cursor-pointer'
+                        : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--border)] cursor-pointer'
+                    }`}
+                    title={assignable ? '' : `当前状态：${char.status}，不可指派`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={batchAssignForm.characterIds.includes(char.id)}
+                      disabled={!assignable}
+                      onChange={(e) => {
+                        if (!assignable) return;
+                        if (e.target.checked) {
+                          setBatchAssignForm({
+                            ...batchAssignForm,
+                            characterIds: [...batchAssignForm.characterIds, char.id],
+                          });
+                        } else {
+                          setBatchAssignForm({
+                            ...batchAssignForm,
+                            characterIds: batchAssignForm.characterIds.filter((id) => id !== char.id),
+                          });
+                        }
+                      }}
+                      className="hidden"
+                    />
+                    <span>{char.avatar}</span>
+                    <span className="text-sm">{char.name}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${
+                      assignable ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'
+                    }`}>
+                      {char.status}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 p-3 bg-[var(--bg-tertiary)] rounded-lg">
+            <input
+              type="checkbox"
+              id="replaceExisting"
+              checked={batchAssignForm.replaceExisting}
+              onChange={(e) => setBatchAssignForm({ ...batchAssignForm, replaceExisting: e.target.checked })}
+              className="w-4 h-4 rounded accent-[var(--accent-primary)]"
+            />
+            <label htmlFor="replaceExisting" className="text-sm cursor-pointer">
+              <span className="font-medium">替换现有角色</span>
+              <span className="text-[var(--text-secondary)] ml-2">（勾选后将移除任务中所有现有角色，仅保留新选择的角色）</span>
+            </label>
+          </div>
+
+          <div className="flex gap-4 pt-2">
+            <Button
+              className="flex-1"
+              onClick={handleBatchAssign}
+              disabled={batchLoading}
+            >
+              {batchLoading ? '处理中...' : '确认批量指派'}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              className="flex-1"
+              onClick={() => setBatchAssignModalOpen(false)}
+              disabled={batchLoading}
+            >
+              取消
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={batchPriorityModalOpen}
+        onClose={() => setBatchPriorityModalOpen(false)}
+        title={`批量调整优先级 (${selectedMissionIds.size} 个任务)`}
+      >
+        <div className="space-y-4">
+          <div className="bg-[var(--bg-tertiary)] rounded-xl p-4">
+            <p className="text-sm text-[var(--text-secondary)] mb-1">将对以下任务进行操作</p>
+            <p className="font-medium">
+              {missions
+                .filter((m) => selectedMissionIds.has(m.id))
+                .map((m) => m.title)
+                .join('、')}
+            </p>
+          </div>
+
+          <SelectField
+            label="设置优先级"
+            value={batchPriorityForm.priority}
+            onChange={(e) => setBatchPriorityForm({ priority: e.target.value })}
+            options={[
+              { value: '高', label: '高优先级' },
+              { value: '中', label: '中优先级' },
+              { value: '低', label: '低优先级' },
+            ]}
+          />
+
+          <div className="flex gap-4 pt-2">
+            <Button
+              className="flex-1"
+              onClick={handleBatchPriority}
+              disabled={batchLoading}
+            >
+              {batchLoading ? '处理中...' : '确认调整优先级'}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              className="flex-1"
+              onClick={() => setBatchPriorityModalOpen(false)}
+              disabled={batchLoading}
+            >
+              取消
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={batchDueDateModalOpen}
+        onClose={() => setBatchDueDateModalOpen(false)}
+        title={`批量修改截止日期 (${selectedMissionIds.size} 个任务)`}
+      >
+        <div className="space-y-4">
+          <div className="bg-[var(--bg-tertiary)] rounded-xl p-4">
+            <p className="text-sm text-[var(--text-secondary)] mb-1">将对以下任务进行操作</p>
+            <p className="font-medium">
+              {missions
+                .filter((m) => selectedMissionIds.has(m.id))
+                .map((m) => `${m.title} (原: ${new Date(m.dueDate).toLocaleDateString('zh-CN')})`)
+                .join('、')}
+            </p>
+          </div>
+
+          <InputField
+            label="新截止日期"
+            type="date"
+            value={batchDueDateForm.dueDate}
+            onChange={(e) => setBatchDueDateForm({ dueDate: e.target.value })}
+            required
+          />
+
+          <div className="flex gap-4 pt-2">
+            <Button
+              className="flex-1"
+              onClick={handleBatchDueDate}
+              disabled={batchLoading}
+            >
+              {batchLoading ? '处理中...' : '确认修改截止日期'}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              className="flex-1"
+              onClick={() => setBatchDueDateModalOpen(false)}
+              disabled={batchLoading}
+            >
+              取消
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

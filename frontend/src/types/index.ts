@@ -173,3 +173,51 @@ export interface LoginResponse {
   token: string;
   user: User;
 }
+
+export interface MissionChangeLog {
+  id: number;
+  missionId: number;
+  userId: number | null;
+  user: {
+    id: number;
+    username: string;
+    character: {
+      name: string;
+      avatar: string | null;
+    } | null;
+  } | null;
+  actionType: string;
+  fieldName: string | null;
+  oldValue: string | null;
+  newValue: string | null;
+  description: string | null;
+  batchId: string | null;
+  createdAt: string;
+}
+
+export interface BatchAssignResult {
+  missionId: number;
+  title: string;
+  added: string[];
+  removed: string[];
+}
+
+export interface BatchPriorityResult {
+  missionId: number;
+  title: string;
+  oldPriority: string;
+  newPriority: string;
+}
+
+export interface BatchDueDateResult {
+  missionId: number;
+  title: string;
+  oldDueDate: string;
+  newDueDate: string;
+}
+
+export interface BatchOperationResponse<T> {
+  message: string;
+  batchId: string;
+  results: T[];
+}
