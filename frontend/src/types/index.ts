@@ -72,6 +72,7 @@ export interface Mission {
   description: string;
   priority: string;
   status: string;
+  resultSummary?: string;
   dueDate: string;
   eventId?: number;
   event?: Event;

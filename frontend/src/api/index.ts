@@ -62,6 +62,8 @@ export const missionAPI = {
   getById: (id: number) => api.get<Mission>(`/missions/${id}`).then((res) => res.data),
   create: (data: any) => api.post<Mission>('/missions', data).then((res) => res.data),
   update: (id: number, data: any) => api.put<Mission>(`/missions/${id}`, data).then((res) => res.data),
+  complete: (id: number, data: { resultSummary: string }) =>
+    api.post<Mission>(`/missions/${id}/complete`, data).then((res) => res.data),
   delete: (id: number) => api.delete(`/missions/${id}`).then((res) => res.data),
   getChangeLogs: (id: number) => api.get<MissionChangeLog[]>(`/missions/${id}/change-logs`).then((res) => res.data),
   batchAssignCharacters: (data: { missionIds: number[]; characterIds: number[]; replaceExisting?: boolean }) =>

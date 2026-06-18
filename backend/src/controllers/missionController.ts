@@ -10,9 +10,14 @@ const missionSchema = z.object({
   description: z.string().min(1),
   priority: z.string().min(1),
   status: z.string().min(1),
+  resultSummary: z.string().optional(),
   dueDate: z.string().min(1),
   eventId: z.number().optional(),
   characterIds: z.array(z.number()).optional(),
+});
+
+const completeMissionSchema = z.object({
+  resultSummary: z.string().min(1, '处理结果摘要不能为空'),
 });
 
 export const getMissions = async (req: Request, res: Response) => {
@@ -186,6 +191,14 @@ const autoUpdateEventConclusion = async (eventId: number) => {
       .filter(Boolean)
       .join('\n');
 
+    const missionResultRecords = completedMissions
+      .map((m, idx) => {
+        const parts = [`${idx + 1}. ${m.title}`];
+        if (m.resultSummary) parts.push(`   处理结果: ${m.resultSummary}`);
+        return parts.join('\n');
+      })
+      .join('\n\n');
+
     const successCount = event.characters.filter((ec) => ec.missionResult === '成功').length;
     const totalChars = event.characters.length;
     const overallResult = successCount === totalChars ? '成功' : successCount > 0 ? '部分成功' : '失败';
@@ -193,6 +206,7 @@ const autoUpdateEventConclusion = async (eventId: number) => {
     const disposalConclusion = `事件处置结论：\n` +
       `共计 ${event.missions.length} 个任务，已全部完成。\n` +
       `参与角色 ${totalChars} 人，成功完成 ${successCount} 人。\n\n` +
+      `任务处理结果摘要：\n${missionResultRecords}\n\n` +
       `角色协作记录：\n${collaborationRecords}`;
 
     await prisma.event.update({
@@ -295,6 +309,77 @@ export const deleteMission = async (req: Request, res: Response) => {
     res.json({ message: '删除成功' });
   } catch (error) {
     res.status(404).json({ message: '任务不存在' });
+  }
+};
+
+export const completeMission = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { resultSummary } = completeMissionSchema.parse(req.body);
+    const missionId = Number(id);
+
+    const existingMission = await prisma.mission.findUnique({
+      where: { id: missionId },
+    });
+
+    if (!existingMission) {
+      return res.status(404).json({ message: '任务不存在' });
+    }
+
+    if (existingMission.status === '已完成') {
+      return res.status(400).json({ message: '任务已完成，不可重复完成' });
+    }
+
+    if (existingMission.status === '已取消') {
+      return res.status(400).json({ message: '已取消的任务不可完成' });
+    }
+
+    const mission = await prisma.mission.update({
+      where: { id: missionId },
+      data: {
+        status: '已完成',
+        resultSummary,
+      },
+      include: {
+        characters: { include: { character: true } },
+        event: true,
+        extensionRequests: {
+          include: { applicant: true, approver: true },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+
+    if (existingMission.eventId) {
+      const event = await prisma.event.findUnique({ where: { id: existingMission.eventId } });
+      if (event && event.disposalStatus === '待处置') {
+        await prisma.event.update({
+          where: { id: existingMission.eventId },
+          data: { disposalStatus: '处置中' },
+        });
+      }
+      await autoUpdateEventConclusion(existingMission.eventId);
+    }
+
+    const updatedMission = await prisma.mission.findUnique({
+      where: { id: missionId },
+      include: {
+        characters: { include: { character: true } },
+        event: true,
+        extensionRequests: {
+          include: { applicant: true, approver: true },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+
+    res.json(updatedMission);
+  } catch (error) {
+    console.error(error);
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: error.errors[0].message });
+    }
+    res.status(400).json({ message: '完成任务失败' });
   }
 };
 

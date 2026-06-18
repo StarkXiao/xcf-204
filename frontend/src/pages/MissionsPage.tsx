@@ -25,6 +25,7 @@ const MissionsPage = () => {
   const [batchAssignModalOpen, setBatchAssignModalOpen] = useState(false);
   const [batchPriorityModalOpen, setBatchPriorityModalOpen] = useState(false);
   const [batchDueDateModalOpen, setBatchDueDateModalOpen] = useState(false);
+  const [completeMissionModalOpen, setCompleteMissionModalOpen] = useState(false);
   const [changeLogs, setChangeLogs] = useState<MissionChangeLog[]>([]);
   const [showChangeLogs, setShowChangeLogs] = useState(false);
   const [batchAssignForm, setBatchAssignForm] = useState({
@@ -46,6 +47,9 @@ const MissionsPage = () => {
   const [approveForm, setApproveForm] = useState({
     status: '已批准' as '已批准' | '已拒绝',
     approvalComment: '',
+  });
+  const [completeMissionForm, setCompleteMissionForm] = useState({
+    resultSummary: '',
   });
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('list');
@@ -307,6 +311,32 @@ const MissionsPage = () => {
     if (confirm('确定要删除这个任务吗？')) {
       await missionAPI.delete(id);
       loadData();
+    }
+  };
+
+  const openCompleteMissionModal = () => {
+    if (!selectedMission) return;
+    setCompleteMissionForm({ resultSummary: selectedMission.resultSummary || '' });
+    setCompleteMissionModalOpen(true);
+  };
+
+  const handleCompleteMission = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedMission) return;
+    if (!completeMissionForm.resultSummary.trim()) {
+      alert('请填写处理结果摘要');
+      return;
+    }
+    try {
+      await missionAPI.complete(selectedMission.id, {
+        resultSummary: completeMissionForm.resultSummary,
+      });
+      setCompleteMissionModalOpen(false);
+      setDetailModalOpen(false);
+      loadData();
+      alert('任务已标记为完成，处理结果已回写至关联事件结论');
+    } catch (err: any) {
+      alert(err.response?.data?.message || '完成任务失败');
     }
   };
 
@@ -756,6 +786,12 @@ const MissionsPage = () => {
                   <span>📅 截止: {new Date(mission.dueDate).toLocaleDateString('zh-CN')}</span>
                 </div>
                 <p className="text-[var(--text-secondary)] mb-4">{mission.description}</p>
+                {mission.resultSummary && (
+                  <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-2 mb-4">
+                    <p className="text-xs text-green-400 font-medium mb-1">✅ 处理结果摘要</p>
+                    <p className="text-xs text-[var(--text-secondary)] line-clamp-2">{mission.resultSummary}</p>
+                  </div>
+                )}
                 {mission.characters && mission.characters.length > 0 && (
                   <div className="flex flex-wrap gap-2">
                     <span className="text-sm text-[var(--text-secondary)]">执行人员:</span>
@@ -803,7 +839,6 @@ const MissionsPage = () => {
               options={[
                 { value: '待处理', label: '待处理' },
                 { value: '进行中', label: '进行中' },
-                { value: '已完成', label: '已完成' },
                 { value: '已取消', label: '已取消' },
               ]}
             />
@@ -922,6 +957,15 @@ const MissionsPage = () => {
               <p className="text-[var(--text-secondary)] text-sm">{selectedMission.description}</p>
             </div>
 
+            {selectedMission.resultSummary && (
+              <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4">
+                <h3 className="font-medium mb-2 flex items-center gap-2">
+                  <span>✅</span> 处理结果摘要
+                </h3>
+                <p className="text-[var(--text-secondary)] text-sm whitespace-pre-wrap">{selectedMission.resultSummary}</p>
+              </div>
+            )}
+
             <div className="border-t border-[var(--border)] pt-4">
               <h3 className="font-medium mb-3 flex items-center gap-2">
                 <span>👤</span> 执行角色 ({getMissionCharacters(selectedMission.id).length})
@@ -1010,6 +1054,15 @@ const MissionsPage = () => {
                       <div className="text-xs text-[var(--text-secondary)]">
                         📅 {new Date(event.date).toLocaleDateString('zh-CN')} · 📍 {event.location}
                       </div>
+                      {event.disposalConclusion && (
+                        <div className="mt-2 pt-2 border-t border-[var(--border)]">
+                          <div className="flex items-center gap-1 mb-1">
+                            <span className="text-xs text-green-400">🔄</span>
+                            <span className="text-xs font-medium text-green-400">事件处置结论（任务回写）</span>
+                          </div>
+                          <p className="text-xs text-[var(--text-secondary)] line-clamp-3 whitespace-pre-wrap">{event.disposalConclusion}</p>
+                        </div>
+                      )}
                     </div>
                   ))
                 )}
@@ -1070,6 +1123,13 @@ const MissionsPage = () => {
             )}
 
             <div className="flex flex-wrap gap-2 pt-4 border-t border-[var(--border)]">
+              {isAdmin && selectedMission && selectedMission.status !== '已完成' && selectedMission.status !== '已取消' && (
+                <Button
+                  onClick={openCompleteMissionModal}
+                >
+                  ✅ 完成任务
+                </Button>
+              )}
               {selectedMission && !isAdmin && selectedMission.status !== '已完成' && selectedMission.status !== '已取消' && (
                 <Button
                   variant="secondary"
@@ -1587,6 +1647,82 @@ const MissionsPage = () => {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        isOpen={completeMissionModalOpen}
+        onClose={() => setCompleteMissionModalOpen(false)}
+        title="完成任务"
+      >
+        {selectedMission && (
+          <form onSubmit={handleCompleteMission} className="space-y-4">
+            <div className="bg-[var(--bg-tertiary)] rounded-xl p-4 space-y-3">
+              <div>
+                <p className="text-sm text-[var(--text-secondary)] mb-1">任务</p>
+                <p className="font-medium">{selectedMission.title}</p>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <Badge color={priorityColors[selectedMission.priority] || 'gray'} className="text-xs">
+                    {selectedMission.priority}优先级
+                  </Badge>
+                  <Badge color={statusColors[selectedMission.status] || 'gray'} className="text-xs">
+                    {selectedMission.status}
+                  </Badge>
+                </div>
+              </div>
+              {selectedMission.event && (
+                <div className="pt-2 border-t border-[var(--border)]">
+                  <p className="text-sm text-[var(--text-secondary)] mb-1">关联事件</p>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm">{selectedMission.event.title}</span>
+                    <Badge color={disposalStatusColors[selectedMission.event.disposalStatus] || 'gray'} className="text-xs">
+                      {selectedMission.event.disposalStatus}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-[var(--accent-primary)] mt-1">
+                    💡 完成任务后，处理结果将回写至该事件的处置结论
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <TextareaField
+              label="处理结果摘要 *"
+              value={completeMissionForm.resultSummary}
+              onChange={(e) => setCompleteMissionForm({ ...completeMissionForm, resultSummary: e.target.value })}
+              placeholder="请详细描述任务的处理结果、关键成果和重要发现..."
+              required
+            />
+
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
+              <p className="text-sm text-blue-400 font-medium mb-1">🔗 数据链路闭环</p>
+              <p className="text-xs text-[var(--text-secondary)]">
+                提交后，系统将自动完成以下操作：
+              </p>
+              <ul className="text-xs text-[var(--text-secondary)] mt-1 space-y-1">
+                <li>1. 将任务状态更新为「已完成」</li>
+                <li>2. 将处理结果摘要回写至关联事件处置结论</li>
+                <li>3. 若关联事件所有任务均已完成，自动生成事件处置结论</li>
+              </ul>
+            </div>
+
+            <div className="flex gap-4 pt-2">
+              <Button
+                type="submit"
+                className="flex-1"
+              >
+                ✅ 确认完成任务
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                className="flex-1"
+                onClick={() => setCompleteMissionModalOpen(false)}
+              >
+                取消
+              </Button>
+            </div>
+          </form>
+        )}
       </Modal>
     </div>
   );

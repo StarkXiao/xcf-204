@@ -537,6 +537,14 @@ export const autoUpdateEventConclusion = async (req: Request, res: Response) => 
         .filter(Boolean)
         .join('\n');
 
+      const missionResultRecords = completedMissions
+        .map((m, idx) => {
+          const parts = [`${idx + 1}. ${m.title}`];
+          if (m.resultSummary) parts.push(`   处理结果: ${m.resultSummary}`);
+          return parts.join('\n');
+        })
+        .join('\n\n');
+
       const successCount = event.characters.filter((ec) => ec.missionResult === '成功').length;
       const totalChars = event.characters.length;
       const overallResult = successCount === totalChars ? '成功' : successCount > 0 ? '部分成功' : '失败';
@@ -544,6 +552,7 @@ export const autoUpdateEventConclusion = async (req: Request, res: Response) => 
       disposalConclusion = `事件处置结论：\n` +
         `共计 ${event.missions.length} 个任务，已全部完成。\n` +
         `参与角色 ${totalChars} 人，成功完成 ${successCount} 人。\n\n` +
+        `任务处理结果摘要：\n${missionResultRecords}\n\n` +
         `角色协作记录：\n${collaborationRecords}`;
 
       result = overallResult;

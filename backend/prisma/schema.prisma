@@ -63,6 +63,7 @@ model Mission {
   description           String
   priority              String
   status                String
+  resultSummary         String?
   dueDate               DateTime
   eventId               Int?
   event                 Event?                  @relation(fields: [eventId], references: [id], onDelete: SetNull)

@@ -5,6 +5,7 @@ import {
   createMission,
   updateMission,
   deleteMission,
+  completeMission,
   batchAssignCharacters,
   batchUpdatePriority,
   batchUpdateDueDate,
@@ -21,6 +22,7 @@ router.post('/', authenticate, requireAdmin, createMission);
 router.post('/batch/assign', authenticate, requireAdmin, batchAssignCharacters);
 router.post('/batch/priority', authenticate, requireAdmin, batchUpdatePriority);
 router.post('/batch/due-date', authenticate, requireAdmin, batchUpdateDueDate);
+router.post('/:id/complete', authenticate, requireAdmin, completeMission);
 router.put('/:id', authenticate, requireAdmin, updateMission);
 router.delete('/:id', authenticate, requireAdmin, deleteMission);
 
